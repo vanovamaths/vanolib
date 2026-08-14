@@ -1,0 +1,206 @@
+(function(){
+  "use strict";
+
+  var GITHUB_USER = "__GITHUB_USER__"; // replaced at publish time
+  document.getElementById("gh-link").href = "https://github.com/" + GITHUB_USER + "/vanolib";
+
+  var state = {
+    manifest: null,
+    all: [],              // flat array of {id,title,authors,cat,pub,year}
+    loadedYears: new Set(),
+    filtered: null,        // null = use `all` (no active filter)
+    rendered: 0,
+    chunk: 60,
+    query: "",
+    yearFilter: "",
+    catFilter: "",
+    toRead: new Set(JSON.parse(localStorage.getItem("vanolib_toread") || "[]")),
+  };
+
+  var $list = document.getElementById("list");
+  var $empty = document.getElementById("empty");
+  var $q = document.getElementById("q");
+  var $year = document.getElementById("year");
+  var $cat = document.getElementById("cat");
+  var $count = document.getElementById("resultcount");
+  var $statTotal = document.getElementById("stat-total");
+  var $loadFill = document.getElementById("loadbar-fill");
+  var $sentinel = document.getElementById("sentinel");
+  var $foot = document.getElementById("foot");
+
+  function debounce(fn, ms){
+    var t;
+    return function(){
+      clearTimeout(t);
+      var args = arguments;
+      t = setTimeout(function(){ fn.apply(null, args); }, ms);
+    };
+  }
+
+  function recFromRow(row, year){
+    // row = [id, title, authors, cat, pub]
+    return {
+      id: row[0], title: row[1], authors: row[2], cat: row[3], pub: row[4],
+      year: year, lt: (row[1] || "").toLowerCase(), la: (row[2] || "").toLowerCase(),
+    };
+  }
+
+  function loadYear(year){
+    if (state.loadedYears.has(year)) return Promise.resolve();
+    state.loadedYears.add(year);
+    return fetch("data/" + year + ".json").then(function(r){ return r.json(); }).then(function(rows){
+      for (var i=0;i<rows.length;i++) state.all.push(recFromRow(rows[i], year));
+    }).catch(function(err){ console.warn("year load failed", year, err); });
+  }
+
+  function updateProgress(){
+    var doneCount = state.loadedYears.size;
+    var totalCount = (state.manifest && state.manifest.years.length) || 1;
+    var pct = Math.round(100 * doneCount / totalCount);
+    $loadFill.style.width = pct + "%";
+    if (pct >= 100) { setTimeout(function(){ $loadFill.style.width = "100%"; }, 200); }
+    $statTotal.textContent = state.all.length.toLocaleString("fr-FR") + " / " + state.manifest.total.toLocaleString("fr-FR") + " articles chargés";
+  }
+
+  function matches(rec){
+    if (state.yearFilter && rec.year !== state.yearFilter) return false;
+    if (state.catFilter && rec.cat !== state.catFilter) return false;
+    if (state.query){
+      if (rec.lt.indexOf(state.query) === -1 && rec.la.indexOf(state.query) === -1) return false;
+    }
+    return true;
+  }
+
+  function currentSet(){
+    if (!state.query && !state.yearFilter && !state.catFilter) return state.all;
+    return state.all.filter(matches);
+  }
+
+  function cardHTML(rec){
+    var isTR = state.toRead.has(rec.id);
+    var authors = rec.authors.split(";")[0].trim();
+    if (rec.authors.indexOf(";") !== -1) authors += " et al.";
+    return '<div class="card' + (isTR ? " toread" : "") + '" data-id="' + rec.id + '">' +
+      '<div class="title">🔵  ' + escapeHTML(rec.title || "(sans titre)") + '</div>' +
+      '<div class="meta">' + escapeHTML(authors) + '   ·   ' + rec.pub + '<span class="cat">' + escapeHTML(rec.cat) + '</span></div>' +
+      '</div>';
+  }
+
+  function escapeHTML(s){
+    return (s || "").replace(/[&<>"]/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];
+    });
+  }
+
+  var currentResults = [];
+
+  function resetAndRender(){
+    currentResults = currentSet();
+    $count.textContent = currentResults.length.toLocaleString("fr-FR") + " résultat(s)";
+    $list.innerHTML = "";
+    state.rendered = 0;
+    $empty.style.display = currentResults.length === 0 ? "block" : "none";
+    renderMore();
+  }
+
+  function renderMore(){
+    var end = Math.min(state.rendered + state.chunk, currentResults.length);
+    var html = "";
+    for (var i = state.rendered; i < end; i++){
+      html += cardHTML(currentResults[i]);
+    }
+    $list.insertAdjacentHTML("beforeend", html);
+    state.rendered = end;
+  }
+
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if (e.isIntersecting && state.rendered < currentResults.length){
+        renderMore();
+      }
+    });
+  }, { rootMargin: "600px" });
+  io.observe($sentinel);
+
+  $list.addEventListener("click", function(e){
+    var card = e.target.closest(".card");
+    if (!card) return;
+    openReader(card.getAttribute("data-id"));
+  });
+
+  function openReader(id){
+    var rec = state.all.find(function(r){ return r.id === id; });
+    var reader = document.getElementById("reader");
+    document.getElementById("reader-title").textContent = rec ? rec.title : id;
+    document.getElementById("reader-abs-link").href = "https://arxiv.org/abs/" + id;
+    document.getElementById("reader-pdf-link").href = "https://arxiv.org/pdf/" + id;
+    document.getElementById("reader-frame").src = "https://arxiv.org/pdf/" + id;
+    reader.classList.add("open");
+  }
+  document.getElementById("reader-close").addEventListener("click", function(){
+    document.getElementById("reader").classList.remove("open");
+    document.getElementById("reader-frame").src = "";
+  });
+  document.getElementById("reader").addEventListener("click", function(e){
+    if (e.target.id === "reader") {
+      document.getElementById("reader").classList.remove("open");
+      document.getElementById("reader-frame").src = "";
+    }
+  });
+
+  $q.addEventListener("input", debounce(function(){
+    state.query = $q.value.trim().toLowerCase();
+    resetAndRender();
+  }, 180));
+  $year.addEventListener("change", function(){
+    state.yearFilter = $year.value;
+    resetAndRender();
+  });
+  $cat.addEventListener("change", function(){
+    state.catFilter = $cat.value;
+    resetAndRender();
+  });
+
+  fetch("data/manifest.json").then(function(r){ return r.json(); }).then(function(manifest){
+    state.manifest = manifest;
+    $statTotal.textContent = manifest.total.toLocaleString("fr-FR") + " articles";
+    manifest.years.forEach(function(y){
+      var opt = document.createElement("option");
+      opt.value = y.year; opt.textContent = y.year + " (" + y.count.toLocaleString("fr-FR") + ")";
+      $year.appendChild(opt);
+    });
+    manifest.categories.forEach(function(c){
+      var opt = document.createElement("option");
+      opt.value = c.code; opt.textContent = c.code + " (" + c.count.toLocaleString("fr-FR") + ")";
+      $cat.appendChild(opt);
+    });
+    $foot.textContent = "Données arXiv — mise à jour automatique chaque lundi. Dernière génération : " + (manifest.generated || "—");
+
+    var years = manifest.years.map(function(y){ return y.year; });
+    var priority = years.slice(0, 3);
+    var rest = years.slice(3);
+
+    Promise.all(priority.map(loadYear)).then(function(){
+      updateProgress();
+      resetAndRender();
+      // background-load the rest, sequentially to be gentle, re-render count as we go
+      var i = 0;
+      function next(){
+        if (i >= rest.length){ updateProgress(); return; }
+        loadYear(rest[i++]).then(function(){
+          updateProgress();
+          if (state.query || state.yearFilter || state.catFilter){
+            resetAndRender();
+          } else {
+            currentResults = state.all;
+            $count.textContent = currentResults.length.toLocaleString("fr-FR") + " résultat(s)";
+          }
+          next();
+        });
+      }
+      next();
+    });
+  }).catch(function(err){
+    $list.innerHTML = '<div id="empty">Erreur de chargement des données : ' + escapeHTML(String(err)) + '</div>';
+  });
+})();
