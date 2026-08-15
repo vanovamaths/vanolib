@@ -4,11 +4,24 @@
   var GITHUB_USER = "__GITHUB_USER__"; // replaced at publish time
   document.getElementById("gh-link").href = "https://github.com/" + GITHUB_USER + "/vanolib";
 
+  // --- Theme ---
+  var THEME_KEY = "vanolib_theme";
+  var themeBtn = document.getElementById("theme-toggle");
+  function applyTheme(t){
+    document.documentElement.setAttribute("data-theme", t);
+    themeBtn.textContent = t === "dark" ? "☀️" : "🌙";
+    localStorage.setItem(THEME_KEY, t);
+  }
+  applyTheme(localStorage.getItem(THEME_KEY) || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+  themeBtn.addEventListener("click", function(){
+    var cur = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    applyTheme(cur);
+  });
+
   var state = {
     manifest: null,
-    all: [],              // flat array of {id,title,authors,cat,pub,year}
+    all: [],
     loadedYears: new Set(),
-    filtered: null,        // null = use `all` (no active filter)
     rendered: 0,
     chunk: 60,
     query: "",
@@ -22,8 +35,6 @@
   var $q = document.getElementById("q");
   var $year = document.getElementById("year");
   var $cat = document.getElementById("cat");
-  var $count = document.getElementById("resultcount");
-  var $statTotal = document.getElementById("stat-total");
   var $loadFill = document.getElementById("loadbar-fill");
   var $sentinel = document.getElementById("sentinel");
   var $foot = document.getElementById("foot");
@@ -38,7 +49,6 @@
   }
 
   function recFromRow(row, year){
-    // row = [id, title, authors, cat, pub]
     return {
       id: row[0], title: row[1], authors: row[2], cat: row[3], pub: row[4],
       year: year, lt: (row[1] || "").toLowerCase(), la: (row[2] || "").toLowerCase(),
@@ -58,8 +68,7 @@
     var totalCount = (state.manifest && state.manifest.years.length) || 1;
     var pct = Math.round(100 * doneCount / totalCount);
     $loadFill.style.width = pct + "%";
-    if (pct >= 100) { setTimeout(function(){ $loadFill.style.width = "100%"; }, 200); }
-    $statTotal.textContent = state.all.length.toLocaleString("fr-FR") + " / " + state.manifest.total.toLocaleString("fr-FR") + " articles chargés";
+    if (pct >= 100) { setTimeout(function(){ $loadFill.style.width = "0%"; }, 500); }
   }
 
   function matches(rec){
@@ -81,7 +90,7 @@
     var authors = rec.authors.split(";")[0].trim();
     if (rec.authors.indexOf(";") !== -1) authors += " et al.";
     return '<div class="card' + (isTR ? " toread" : "") + '" data-id="' + rec.id + '">' +
-      '<div class="title">🔵  ' + escapeHTML(rec.title || "(sans titre)") + '</div>' +
+      '<div class="title">' + escapeHTML(rec.title || "(untitled)") + '</div>' +
       '<div class="meta">' + escapeHTML(authors) + '   ·   ' + rec.pub + '<span class="cat">' + escapeHTML(rec.cat) + '</span></div>' +
       '</div>';
   }
@@ -96,7 +105,6 @@
 
   function resetAndRender(){
     currentResults = currentSet();
-    $count.textContent = currentResults.length.toLocaleString("fr-FR") + " résultat(s)";
     $list.innerHTML = "";
     state.rendered = 0;
     $empty.style.display = currentResults.length === 0 ? "block" : "none";
@@ -109,7 +117,9 @@
     for (var i = state.rendered; i < end; i++){
       html += cardHTML(currentResults[i]);
     }
-    $list.insertAdjacentHTML("beforeend", html);
+    requestAnimationFrame(function(){
+      $list.insertAdjacentHTML("beforeend", html);
+    });
     state.rendered = end;
   }
 
@@ -119,7 +129,7 @@
         renderMore();
       }
     });
-  }, { rootMargin: "600px" });
+  }, { rootMargin: "800px" });
   io.observe($sentinel);
 
   $list.addEventListener("click", function(e){
@@ -137,15 +147,16 @@
     document.getElementById("reader-frame").src = "https://arxiv.org/pdf/" + id;
     reader.classList.add("open");
   }
-  document.getElementById("reader-close").addEventListener("click", function(){
+  function closeReader(){
     document.getElementById("reader").classList.remove("open");
-    document.getElementById("reader-frame").src = "";
-  });
+    setTimeout(function(){ document.getElementById("reader-frame").src = ""; }, 200);
+  }
+  document.getElementById("reader-close").addEventListener("click", closeReader);
   document.getElementById("reader").addEventListener("click", function(e){
-    if (e.target.id === "reader") {
-      document.getElementById("reader").classList.remove("open");
-      document.getElementById("reader-frame").src = "";
-    }
+    if (e.target.id === "reader") closeReader();
+  });
+  document.addEventListener("keydown", function(e){
+    if (e.key === "Escape") closeReader();
   });
 
   $q.addEventListener("input", debounce(function(){
@@ -163,18 +174,17 @@
 
   fetch("data/manifest.json").then(function(r){ return r.json(); }).then(function(manifest){
     state.manifest = manifest;
-    $statTotal.textContent = manifest.total.toLocaleString("fr-FR") + " articles";
     manifest.years.forEach(function(y){
       var opt = document.createElement("option");
-      opt.value = y.year; opt.textContent = y.year + " (" + y.count.toLocaleString("fr-FR") + ")";
+      opt.value = y.year; opt.textContent = y.year;
       $year.appendChild(opt);
     });
     manifest.categories.forEach(function(c){
       var opt = document.createElement("option");
-      opt.value = c.code; opt.textContent = c.code + " (" + c.count.toLocaleString("fr-FR") + ")";
+      opt.value = c.code; opt.textContent = c.code;
       $cat.appendChild(opt);
     });
-    $foot.textContent = "Données arXiv — mise à jour automatique chaque lundi. Dernière génération : " + (manifest.generated || "—");
+    $foot.textContent = "arXiv data — auto-updated every Monday. Last generated: " + (manifest.generated || "—");
 
     var years = manifest.years.map(function(y){ return y.year; });
     var priority = years.slice(0, 3);
@@ -183,7 +193,6 @@
     Promise.all(priority.map(loadYear)).then(function(){
       updateProgress();
       resetAndRender();
-      // background-load the rest, sequentially to be gentle, re-render count as we go
       var i = 0;
       function next(){
         if (i >= rest.length){ updateProgress(); return; }
@@ -191,9 +200,6 @@
           updateProgress();
           if (state.query || state.yearFilter || state.catFilter){
             resetAndRender();
-          } else {
-            currentResults = state.all;
-            $count.textContent = currentResults.length.toLocaleString("fr-FR") + " résultat(s)";
           }
           next();
         });
@@ -201,6 +207,6 @@
       next();
     });
   }).catch(function(err){
-    $list.innerHTML = '<div id="empty">Erreur de chargement des données : ' + escapeHTML(String(err)) + '</div>';
+    $list.innerHTML = '<div id="empty">Error loading data: ' + escapeHTML(String(err)) + '</div>';
   });
 })();

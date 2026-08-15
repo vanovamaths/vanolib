@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VanoLib — Math Library</title>
-<meta name="description" content="Bibliothèque mathématique arXiv — recherche, filtres, lecture de PDF en direct.">
+<meta name="description" content="Math arXiv library — search, filters, and live PDF reading.">
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%23d97757%22/><text x=%2250%22 y=%2268%22 font-size=%2260%22 font-family=%22Helvetica%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22>V</text></svg>">
 </head>
@@ -14,30 +14,29 @@
   <div class="logo-label">VanoLib</div>
   <div class="tag">Math Library</div>
   <div class="spacer"></div>
-  <div class="stat" id="stat-total">…</div>
+  <button id="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
   <a class="gh" href="https://github.com/" target="_blank" rel="noopener" id="gh-link">GitHub ↗</a>
 </div>
 <div id="loadbar"><div id="loadbar-fill"></div></div>
 <div id="searchbar">
-  <input type="search" id="q" placeholder="Rechercher un titre, un auteur…" autocomplete="off">
-  <select id="year"><option value="">Toutes les années</option></select>
-  <select id="cat"><option value="">Toutes catégories</option></select>
-  <span class="count" id="resultcount"></span>
+  <input type="search" id="q" placeholder="Search a title, an author…" autocomplete="off">
+  <select id="year"><option value="">All years</option></select>
+  <select id="cat"><option value="">All categories</option></select>
 </div>
 <div id="list"></div>
 <div id="sentinel"></div>
-<div id="empty" style="display:none;">Aucun résultat.</div>
+<div id="empty" style="display:none;">No results.</div>
 <footer id="foot"></footer>
 
 <div id="reader">
   <div id="reader-panel">
     <div id="reader-head">
       <div class="rtitle" id="reader-title">—</div>
-      <a id="reader-abs-link" href="#" target="_blank" rel="noopener">Résumé arXiv ↗</a>
-      <a id="reader-pdf-link" href="#" target="_blank" rel="noopener">Ouvrir dans un onglet ↗</a>
-      <button id="reader-close">Fermer ✕</button>
+      <a id="reader-abs-link" href="#" target="_blank" rel="noopener">arXiv abstract ↗</a>
+      <a id="reader-pdf-link" href="#" target="_blank" rel="noopener">Open in a new tab ↗</a>
+      <button id="reader-close">Close ✕</button>
     </div>
-    <iframe id="reader-frame" title="Lecteur PDF"></iframe>
+    <iframe id="reader-frame" title="PDF reader"></iframe>
   </div>
 </div>
 
