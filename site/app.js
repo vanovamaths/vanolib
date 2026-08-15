@@ -1,7 +1,7 @@
 (function(){
   "use strict";
 
-  var GITHUB_USER = "__GITHUB_USER__"; // replaced at publish time
+  var GITHUB_USER = "vanovamaths"; // replaced at publish time
   document.getElementById("gh-link").href = "https://github.com/" + GITHUB_USER + "/vanolib";
 
   // --- Theme ---
