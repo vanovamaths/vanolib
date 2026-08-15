@@ -60,6 +60,23 @@
     }).catch(function(err){ console.warn("year load failed", year, err); });
   }
 
+  function ensureAllLoaded(onProgress){
+    // Called on search/filter: load every remaining year in parallel right away,
+    // so results cover the full archive (back to 1990) instead of waiting for
+    // the slow, polite background queue.
+    if (!state.manifest) return Promise.resolve();
+    var missing = state.manifest.years
+      .map(function(y){ return y.year; })
+      .filter(function(y){ return !state.loadedYears.has(y); });
+    if (missing.length === 0) return Promise.resolve();
+    return Promise.all(missing.map(function(y){
+      return loadYear(y).then(function(){
+        updateProgress();
+        if (onProgress) onProgress();
+      });
+    }));
+  }
+
   function updateProgress(){
     var doneCount = state.loadedYears.size;
     var totalCount = (state.manifest && state.manifest.years.length) || 1;
@@ -159,14 +176,17 @@
   $q.addEventListener("input", debounce(function(){
     state.query = $q.value.trim().toLowerCase();
     resetAndRender();
+    if (state.query) ensureAllLoaded(resetAndRender);
   }, 180));
   $year.addEventListener("change", function(){
     state.yearFilter = $year.value;
     resetAndRender();
+    ensureAllLoaded(resetAndRender);
   });
   $cat.addEventListener("change", function(){
     state.catFilter = $cat.value;
     resetAndRender();
+    ensureAllLoaded(resetAndRender);
   });
 
   fetch("data/manifest.json").then(function(r){ return r.json(); }).then(function(manifest){
