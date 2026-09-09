@@ -1,4 +1,4 @@
-name: Weekly arXiv update
+name: Weekly VanoLib update
 
 on:
   schedule:
@@ -22,17 +22,17 @@ concurrency:
 jobs:
   update-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Collecte HAL, DOAJ, DOAB, Zenodo, NUMDAM et Project Euclid
+      - name: Collecte HAL, DOAJ, DOAB, Zenodo, NUMDAM, Project Euclid et zbMATH Open
         env:
           VANOLIB_SOURCES_LOOKBACK_DAYS: "10"
-          VANOLIB_SOURCES_INITIAL_LOOKBACK_DAYS: "90"
+          VANOLIB_SOURCES_INITIAL_LOOKBACK_DAYS: "365"
           VANOLIB_SOURCES_MAX_PAGES: "30"
         run: python3 scripts/collect_sources.py
 
