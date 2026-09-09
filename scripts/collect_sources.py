@@ -3,11 +3,12 @@
 
 Collectors:
 - HAL search API
-- DOAJ public OAI-PMH article feed
+- DOAJ OAI-PMH
 - DOAB OAI-PMH
 - Zenodo REST API
 - NUMDAM OAI-PMH
-- Project Euclid OAI-PMH (best-effort legacy endpoint)
+- Project Euclid legacy OAI-PMH
+- zbMATH Open OAI-PMH
 
 Only bibliographic metadata and lawful open-access links are stored. PDFs are
 not bulk mirrored. Existing arXiv/OpenAlex collectors remain separate.
@@ -26,9 +27,9 @@ from datetime import datetime, timedelta, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_ROOT = os.path.join(ROOT, "site", "data", "sources")
 LOOKBACK_DAYS = int(os.environ.get("VANOLIB_SOURCES_LOOKBACK_DAYS", "10"))
-INITIAL_LOOKBACK_DAYS = int(os.environ.get("VANOLIB_SOURCES_INITIAL_LOOKBACK_DAYS", "90"))
+INITIAL_LOOKBACK_DAYS = int(os.environ.get("VANOLIB_SOURCES_INITIAL_LOOKBACK_DAYS", "365"))
 MAX_PAGES = int(os.environ.get("VANOLIB_SOURCES_MAX_PAGES", "30"))
-USER_AGENT = "VanoLib/2.2 open-mathematics-harvester (academic metadata index)"
+USER_AGENT = "VanoLib/2.3 open-mathematics-harvester (academic metadata index)"
 
 MATH_TERMS = (
     "mathemat", "algebra", "geometry", "topology", "number theory", "combinator",
@@ -66,7 +67,6 @@ def request_bytes(url, timeout=90, attempts=4):
 
 
 def request_json(url, timeout=90): return json.loads(request_bytes(url, timeout).decode("utf-8"))
-
 def text(v): return "; ".join(str(x).strip() for x in v if str(x).strip()) if isinstance(v, list) else str(v or "").strip()
 def first(v): return (v[0] if v else "") if isinstance(v, list) else (v or "")
 def clean(s): return re.sub(r"\s+", " ", text(s)).strip()
@@ -137,7 +137,14 @@ def period_for(source):
 
 
 def oai_values(meta, tag): return [clean(el.text) for el in meta.findall("dc:" + tag, OAI_NS) if clean(el.text)]
-def parse_xml(raw): return ET.fromstring(re.sub(rb"[\x00-\x08\x0B\x0C\x0E-\x1F]", b"", raw))
+
+
+def parse_xml(raw):
+    raw = re.sub(rb"[\x00-\x08\x0B\x0C\x0E-\x1F]", b"", raw)
+    # Some old OAI endpoints emit bare ampersands. Repair only ampersands that are
+    # not already valid XML entities so metadata harvesting can continue safely.
+    raw = re.sub(rb"&(?!#\d+;|#x[0-9A-Fa-f]+;|amp;|lt;|gt;|quot;|apos;)", b"&amp;", raw)
+    return ET.fromstring(raw)
 
 
 def harvest_oai(source, base_url, filter_math=False, provider=None, max_pages=None, initial_full=False):
@@ -164,7 +171,7 @@ def harvest_oai(source, base_url, filter_math=False, provider=None, max_pages=No
                 if not doi: doi = normalize_doi(ident)
                 if ident.startswith("http"):
                     if not landing: landing = ident
-                    if ident.lower().split("?")[0].endswith(".pdf") and source not in ("numdam","euclid"): pdf = ident
+                    if ident.lower().split("?")[0].endswith(".pdf") and source not in ("numdam","euclid","zbmath"): pdf = ident
             if source == "numdam" and rid.startswith("oai:numdam.org:"):
                 landing = "https://www.numdam.org/item?id=" + urllib.parse.quote(rid.split("oai:numdam.org:",1)[1])
             packed = compact(source,rid,first(titles),creators,subjects,dates,first(types),first(sources) or first(publishers),landing,pdf,doi,provider or source.upper(),first(rights))
@@ -199,40 +206,59 @@ def harvest_doaj():
 
 def harvest_zenodo():
     source="zenodo"; start,_=period_for(source); empty=source_is_empty(source); out=[]
-    for page in range(1,min(MAX_PAGES,12)+1):
-        payload=request_json("https://zenodo.org/api/records?"+urllib.parse.urlencode({"q":"mathematics","sort":"mostrecent","page":page,"size":100}),timeout=120)
-        hits=payload.get("hits",{}); rows=hits.get("hits",[]) if isinstance(hits,dict) else []
-        if not rows: break
-        stop=False
-        for rec in rows:
-            meta=rec.get("metadata") or {}; title=meta.get("title") or rec.get("title") or ""; creators=meta.get("creators") or []; authors=[]
-            for c in creators:
-                if isinstance(c,dict): authors.append(c.get("name") or (c.get("person_or_org") or {}).get("name") or "")
-            keywords=meta.get("keywords") or meta.get("subjects") or []; desc=meta.get("description") or ""
-            if not math_related(title,keywords,desc): continue
-            pub=meta.get("publication_date") or rec.get("created") or ""; d=extract_date(pub)
-            if not empty and d and d[:10] < start.isoformat(): stop=True
-            rtype=meta.get("resource_type") or {}; rtype_name=rtype.get("type") if isinstance(rtype,dict) else rtype; links=rec.get("links") or {}; landing=links.get("self_html") or links.get("html") or ("https://zenodo.org/records/%s"%rec.get("id") if rec.get("id") else ""); pdf=""
-            files=rec.get("files") or {}; entries=files.get("entries",{}) if isinstance(files,dict) else {}
-            if isinstance(entries,dict):
-                for f in entries.values():
-                    if isinstance(f,dict) and str(f.get("key") or "").lower().endswith(".pdf"):
-                        flinks=f.get("links") or {}; pdf=flinks.get("content") or flinks.get("self") or ""; break
-            lic=meta.get("license") or {}; lic_name=(lic.get("id") or lic.get("title") or "") if isinstance(lic,dict) else lic
-            packed=compact(source,rec.get("id"),title,authors,keywords,pub,rtype_name,"Zenodo",landing,pdf,meta.get("doi") or rec.get("doi"),"Zenodo",lic_name)
-            if packed: out.append(packed)
-        print("  Zenodo page %d: %d records, %d kept"%(page,len(rows),len(out)))
-        if stop or len(rows)<100: break
-        time.sleep(0.5)
-    return out
+    # Smaller pages are much more reliable than 100-record payloads on Zenodo.
+    queries=("keywords:mathematics","mathematics")
+    last=None
+    for query in queries:
+        try:
+            for page in range(1,min(MAX_PAGES,20)+1):
+                payload=request_json("https://zenodo.org/api/records?"+urllib.parse.urlencode({"q":query,"sort":"mostrecent","page":page,"size":25}),timeout=90)
+                hits=payload.get("hits",{}); rows=hits.get("hits",[]) if isinstance(hits,dict) else []
+                if not rows: break
+                stop=False
+                for rec in rows:
+                    meta=rec.get("metadata") or {}; title=meta.get("title") or rec.get("title") or ""; creators=meta.get("creators") or []; authors=[]
+                    for c in creators:
+                        if isinstance(c,dict): authors.append(c.get("name") or (c.get("person_or_org") or {}).get("name") or "")
+                    keywords=meta.get("keywords") or meta.get("subjects") or []; desc=meta.get("description") or ""
+                    if not math_related(title,keywords,desc): continue
+                    pub=meta.get("publication_date") or rec.get("created") or ""; d=extract_date(pub)
+                    if not empty and d and d[:10] < start.isoformat(): stop=True
+                    rtype=meta.get("resource_type") or {}; rtype_name=rtype.get("type") if isinstance(rtype,dict) else rtype; links=rec.get("links") or {}; landing=links.get("self_html") or links.get("html") or ("https://zenodo.org/records/%s"%rec.get("id") if rec.get("id") else ""); pdf=""
+                    files=rec.get("files") or {}; entries=files.get("entries",{}) if isinstance(files,dict) else {}
+                    if isinstance(entries,dict):
+                        for f in entries.values():
+                            if isinstance(f,dict) and str(f.get("key") or "").lower().endswith(".pdf"):
+                                flinks=f.get("links") or {}; pdf=flinks.get("content") or flinks.get("self") or ""; break
+                    lic=meta.get("license") or {}; lic_name=(lic.get("id") or lic.get("title") or "") if isinstance(lic,dict) else lic
+                    packed=compact(source,rec.get("id"),title,authors,keywords,pub,rtype_name,"Zenodo",landing,pdf,meta.get("doi") or rec.get("doi"),"Zenodo",lic_name)
+                    if packed: out.append(packed)
+                print("  Zenodo page %d: %d records, %d kept"%(page,len(rows),len(out)))
+                if stop or len(rows)<25: break
+                time.sleep(0.4)
+            if out: return out
+        except Exception as exc:
+            last=exc; print("  Zenodo query %s failed: %s"%(query,exc),file=sys.stderr); time.sleep(2)
+    if out: return out
+    raise last or RuntimeError("Zenodo API unavailable")
 
 
 def harvest_euclid():
     last=None
     for base in ("http://projecteuclid.org/DPubS/","https://projecteuclid.org/DPubS"):
-        try: return harvest_oai("euclid",base,filter_math=False,provider="Project Euclid",max_pages=min(MAX_PAGES,16),initial_full=True)
+        try: return harvest_oai("euclid",base,filter_math=False,provider="Project Euclid",max_pages=min(MAX_PAGES,20),initial_full=True)
         except Exception as exc: last=exc; print("  Project Euclid endpoint %s failed: %s"%(base,exc),file=sys.stderr)
     raise last or RuntimeError("Project Euclid OAI endpoint unavailable")
+
+
+def harvest_zbmath():
+    last=None
+    for base in ("https://oai.zbmath.org/", "https://oai.zbmath.org/v1/"):
+        try:
+            return harvest_oai("zbmath",base,filter_math=False,provider="zbMATH Open",max_pages=min(MAX_PAGES,20),initial_full=True)
+        except Exception as exc:
+            last=exc; print("  zbMATH endpoint %s failed: %s"%(base,exc),file=sys.stderr)
+    raise last or RuntimeError("zbMATH Open OAI endpoint unavailable")
 
 
 def regenerate_manifest(statuses):
@@ -247,7 +273,7 @@ def regenerate_manifest(statuses):
         years.sort(key=lambda x:x["year"],reverse=True); sources.append({"source":source,"count":count,"years":years,"status":statuses.get(source,"ok")}); total += count
     for source,status in statuses.items():
         if not any(s["source"]==source for s in sources): sources.append({"source":source,"count":0,"years":[],"status":status})
-    sources.sort(key=lambda s:s["source"]); save_json(os.path.join(DATA_ROOT,"manifest.json"),{"schema":2,"generated":datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),"total":total,"sources":sources}); return total
+    sources.sort(key=lambda s:s["source"]); save_json(os.path.join(DATA_ROOT,"manifest.json"),{"schema":3,"generated":datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),"total":total,"sources":sources}); return total
 
 
 def run_one(source,fn,statuses):
@@ -263,8 +289,9 @@ def main():
     run_one("doaj",harvest_doaj,statuses)
     run_one("doab",lambda:harvest_oai("doab","https://directory.doabooks.org/oai/request",filter_math=True,provider="DOAB",max_pages=min(MAX_PAGES,20),initial_full=True),statuses)
     run_one("zenodo",harvest_zenodo,statuses)
-    run_one("numdam",lambda:harvest_oai("numdam","http://www.numdam.org/oai",filter_math=False,provider="NUMDAM",max_pages=min(MAX_PAGES,30),initial_full=True),statuses)
+    run_one("numdam",lambda:harvest_oai("numdam","https://www.numdam.org/oai",filter_math=False,provider="NUMDAM",max_pages=min(MAX_PAGES,30),initial_full=True),statuses)
     run_one("euclid",harvest_euclid,statuses)
+    run_one("zbmath",harvest_zbmath,statuses)
     print("VanoLib additional local-source references: %d"%regenerate_manifest(statuses))
 
 
