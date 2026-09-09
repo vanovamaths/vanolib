@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="google-site-verification" content="nwSabsRumpGB6sOMVnJccjSqIy-mAOWAHp2JDzQthoU">
 <title>VanoLib — Open Mathematics Library</title>
-<meta name="description" content="Search and read open-access mathematics papers and resources from arXiv, OpenAlex, DOAJ, DOAB, zbMATH Open, Project Euclid, HAL and NUMDAM.">
+<meta name="description" content="Search locally indexed open mathematics references from arXiv, OpenAlex, HAL, DOAJ, DOAB, Zenodo, NUMDAM and Project Euclid.">
 <link rel="canonical" href="https://vanovamaths.github.io/vanolib/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="VanoLib — Open Mathematics Library">
-<meta property="og:description" content="A unified discovery interface for open mathematics literature and trusted open-access resources.">
+<meta property="og:description" content="A locally harvested discovery library for open mathematics literature.">
 <meta property="og:url" content="https://vanovamaths.github.io/vanolib/">
 <meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="style.css">
@@ -44,7 +44,7 @@
       <div class="hero-copy-main">
         <div class="eyebrow">All mathematics · one place</div>
         <h1 id="hero-title">Open mathematics library</h1>
-        <p>Discover research papers, books, theses, journals and mathematical resources through trusted open-access indexes.</p>
+        <p>Discover papers, books, theses and journals from locally harvested open scholarly collections.</p>
       </div>
       <div class="hero-math" aria-hidden="true">
         <span>∫<sub>M</sub> ω</span>
@@ -68,21 +68,22 @@
       <button class="source-tab active" data-source="all"><span>◫</span>All</button>
       <button class="source-tab" data-source="arxiv"><span>𝛘</span>arXiv</button>
       <button class="source-tab" data-source="openalex"><span>◎</span>OpenAlex</button>
-      <a class="source-link" href="https://doaj.org/" target="_blank" rel="noopener"><span>◉</span>DOAJ</a>
-      <a class="source-link" href="https://www.doabooks.org/" target="_blank" rel="noopener"><span>▥</span>DOAB</a>
+      <button class="source-tab" data-source="doaj"><span>◉</span>DOAJ</button>
+      <button class="source-tab" data-source="doab"><span>▥</span>DOAB</button>
+      <button class="source-tab" data-source="hal"><span>H</span>HAL</button>
+      <button class="source-tab" data-source="zenodo"><span>Z</span>Zenodo</button>
+      <button class="source-tab" data-source="numdam"><span>N</span>NUMDAM</button>
+      <button class="source-tab" data-source="euclid"><span>Ε</span>Project Euclid</button>
       <a class="source-link" href="https://zbmath.org/" target="_blank" rel="noopener"><span>∑</span>zbMATH Open</a>
-      <a class="source-link" href="https://projecteuclid.org/" target="_blank" rel="noopener"><span>Ε</span>Project Euclid</a>
-      <a class="source-link" href="https://hal.science/" target="_blank" rel="noopener"><span>H</span>HAL</a>
-      <a class="source-link" href="https://www.numdam.org/" target="_blank" rel="noopener"><span>N</span>NUMDAM</a>
     </div>
   </section>
 
   <section class="stats" aria-label="Library statistics">
     <div class="stats-inner">
-      <div class="stat-item"><div class="stat-icon">▤</div><div><strong id="stat-total">—</strong><span>arXiv papers indexed locally</span></div></div>
-      <div class="stat-item"><div class="stat-icon">□</div><div><strong id="stat-updated">—</strong><span>Last local update</span></div></div>
-      <div class="stat-item"><div class="stat-icon">◇</div><div><strong id="stat-categories">—</strong><span>Mathematics categories</span></div></div>
-      <div class="stat-item"><div class="stat-icon">∞</div><div><strong>Open</strong><span>Legal open-access discovery</span></div></div>
+      <div class="stat-item"><div class="stat-icon">▤</div><div><strong id="stat-total">—</strong><span>References indexed locally</span></div></div>
+      <div class="stat-item"><div class="stat-icon">□</div><div><strong id="stat-updated">—</strong><span>Last collector update</span></div></div>
+      <div class="stat-item"><div class="stat-icon">◇</div><div><strong id="stat-categories">—</strong><span>arXiv mathematics categories</span></div></div>
+      <div class="stat-item"><div class="stat-icon">∞</div><div><strong>Open</strong><span>Metadata stored in VanoLib</span></div></div>
     </div>
   </section>
 
@@ -95,9 +96,16 @@
 
       <label class="field-label" for="source-select">Source</label>
       <select id="source-select">
-        <option value="all">All integrated sources</option>
-        <option value="arxiv">arXiv local index</option>
-        <option value="openalex">OpenAlex open access</option>
+        <option value="all">All local indexes</option>
+        <option value="arxiv">arXiv</option>
+        <option value="openalex">OpenAlex</option>
+        <option value="hal">HAL</option>
+        <option value="doaj">DOAJ</option>
+        <option value="doab">DOAB</option>
+        <option value="zenodo">Zenodo</option>
+        <option value="numdam">NUMDAM</option>
+        <option value="euclid">Project Euclid</option>
+        <option value="zbmath">zbMATH Open (when available through indexed metadata)</option>
       </select>
 
       <label class="field-label" for="cat">Subject area</label>
@@ -122,16 +130,16 @@
       <button class="reset-btn" id="reset-filters" type="button">Reset</button>
 
       <div class="source-card">
-        <div class="source-head"><strong>Local arXiv data</strong><span class="status-dot" title="Automatic update enabled"></span></div>
-        <small>Updated every Monday.<br>Last successful update: <span id="source-updated">—</span></small>
+        <div class="source-head"><strong>VanoLib collectors</strong><span class="status-dot" title="Automatic update enabled"></span></div>
+        <small>arXiv + open scholarly sources.<br>Updated every Monday.<br>Last update: <span id="source-updated">—</span></small>
       </div>
 
-      <div class="open-note">Only lawful open-access sources are linked or queried from VanoLib.</div>
+      <div class="open-note">VanoLib stores bibliographic metadata and lawful open-access links. Full-text files are not bulk mirrored.</div>
     </aside>
 
     <div class="results-column">
       <section class="latest-section" id="latest-section">
-        <div class="section-heading"><div><span class="heading-icon">↯</span><h2>Latest additions</h2><small>from the local arXiv collection</small></div><a href="#all-results">View all <span>→</span></a></div>
+        <div class="section-heading"><div><span class="heading-icon">↯</span><h2>Latest additions</h2><small>from all local VanoLib collectors</small></div><a href="#all-results">View all <span>→</span></a></div>
         <div id="latest-list" class="latest-grid"></div>
       </section>
 
@@ -151,7 +159,7 @@
           <aside class="detail-panel" id="detail-panel" aria-live="polite">
             <div class="detail-source" id="detail-source">VanoLib</div>
             <h3 id="detail-title">Select a result</h3>
-            <div class="detail-meta" id="detail-meta">Choose an item to inspect its metadata and open-access links.</div>
+            <div class="detail-meta" id="detail-meta">Choose an item to inspect its locally stored metadata and open-access links.</div>
             <div class="detail-actions" id="detail-actions"></div>
             <div class="detail-tabs"><button class="active" type="button">Preview</button><span>Open-access links are shown when available.</span></div>
             <div class="preview-empty" id="preview-empty">PDF preview will appear here when the source exposes a direct open-access PDF.</div>
@@ -164,14 +172,15 @@
 
   <section class="resources" id="resources">
     <div class="resources-inner">
-      <div><div class="eyebrow">Trusted resources</div><h2>More open mathematics</h2><p>VanoLib keeps its integrated search lightweight while giving direct access to major legal open scholarly collections.</p></div>
+      <div><div class="eyebrow">Collector network</div><h2>Open mathematics sources</h2><p>HAL, DOAJ, DOAB, Zenodo, NUMDAM and Project Euclid are harvested into local VanoLib metadata shards; OpenAlex adds broad open-access coverage.</p></div>
       <div class="resource-grid">
-        <a href="https://doaj.org/" target="_blank" rel="noopener"><strong>DOAJ</strong><span>Open-access journals and articles ↗</span></a>
-        <a href="https://www.doabooks.org/" target="_blank" rel="noopener"><strong>DOAB</strong><span>Peer-reviewed open-access books ↗</span></a>
-        <a href="https://zbmath.org/" target="_blank" rel="noopener"><strong>zbMATH Open</strong><span>Mathematics reviews and metadata ↗</span></a>
-        <a href="https://projecteuclid.org/" target="_blank" rel="noopener"><strong>Project Euclid</strong><span>Mathematics and statistics literature ↗</span></a>
-        <a href="https://hal.science/" target="_blank" rel="noopener"><strong>HAL</strong><span>Open research repository ↗</span></a>
-        <a href="https://www.numdam.org/" target="_blank" rel="noopener"><strong>NUMDAM</strong><span>Digitized mathematics archives ↗</span></a>
+        <a href="https://doaj.org/" target="_blank" rel="noopener"><strong>DOAJ</strong><span>Integrated local metadata collector ↗</span></a>
+        <a href="https://www.doabooks.org/" target="_blank" rel="noopener"><strong>DOAB</strong><span>Integrated local metadata collector ↗</span></a>
+        <a href="https://hal.science/" target="_blank" rel="noopener"><strong>HAL</strong><span>Integrated local metadata collector ↗</span></a>
+        <a href="https://zenodo.org/" target="_blank" rel="noopener"><strong>Zenodo</strong><span>Integrated local metadata collector ↗</span></a>
+        <a href="https://www.numdam.org/" target="_blank" rel="noopener"><strong>NUMDAM</strong><span>Integrated local metadata collector ↗</span></a>
+        <a href="https://projecteuclid.org/" target="_blank" rel="noopener"><strong>Project Euclid</strong><span>Integrated OAI-PMH collector ↗</span></a>
+        <a href="https://zbmath.org/" target="_blank" rel="noopener"><strong>zbMATH Open</strong><span>External mathematics reference service ↗</span></a>
       </div>
     </div>
   </section>
