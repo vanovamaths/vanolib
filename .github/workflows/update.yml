@@ -17,7 +17,7 @@ permissions:
 
 concurrency:
   group: vanolib-data-update
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   update-data:
@@ -55,5 +55,6 @@ jobs:
             echo "Rien de nouveau."
           else
             git commit -m "Mise à jour hebdomadaire VanoLib"
+            git pull --rebase origin main
             git push
           fi
