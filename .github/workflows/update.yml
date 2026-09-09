@@ -29,8 +29,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Collecte arXiv (derniers jours)
-        run: python3 scripts/collect_arxiv.py
+      - name: Collecte HAL, DOAJ, DOAB, Zenodo, NUMDAM et Project Euclid
+        env:
+          VANOLIB_SOURCES_LOOKBACK_DAYS: "10"
+          VANOLIB_SOURCES_INITIAL_LOOKBACK_DAYS: "90"
+          VANOLIB_SOURCES_MAX_PAGES: "30"
+        run: python3 scripts/collect_sources.py
 
       - name: Collecte OpenAlex open mathematics
         env:
@@ -39,12 +43,8 @@ jobs:
           VANOLIB_OPENALEX_MAX_PAGES: "40"
         run: python3 scripts/collect_open_math.py
 
-      - name: Collecte HAL, DOAJ, DOAB, Zenodo, NUMDAM et Project Euclid
-        env:
-          VANOLIB_SOURCES_LOOKBACK_DAYS: "10"
-          VANOLIB_SOURCES_INITIAL_LOOKBACK_DAYS: "90"
-          VANOLIB_SOURCES_MAX_PAGES: "30"
-        run: python3 scripts/collect_sources.py
+      - name: Collecte arXiv (derniers jours)
+        run: python3 scripts/collect_arxiv.py
 
       - name: Commit et push si changements
         run: |
