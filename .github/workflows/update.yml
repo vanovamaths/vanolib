@@ -7,7 +7,9 @@ on:
   push:
     branches: [main]
     paths:
+      - "scripts/collect_arxiv.py"
       - "scripts/collect_open_math.py"
+      - "scripts/collect_sources.py"
       - ".github/workflows/update.yml"
 
 permissions:
@@ -20,7 +22,7 @@ concurrency:
 jobs:
   update-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,6 +38,13 @@ jobs:
           VANOLIB_OPENALEX_LOOKBACK_DAYS: "10"
           VANOLIB_OPENALEX_MAX_PAGES: "40"
         run: python3 scripts/collect_open_math.py
+
+      - name: Collecte HAL, DOAJ, DOAB, Zenodo, NUMDAM et Project Euclid
+        env:
+          VANOLIB_SOURCES_LOOKBACK_DAYS: "10"
+          VANOLIB_SOURCES_INITIAL_LOOKBACK_DAYS: "90"
+          VANOLIB_SOURCES_MAX_PAGES: "30"
+        run: python3 scripts/collect_sources.py
 
       - name: Commit et push si changements
         run: |
