@@ -1,52 +1,26 @@
-name: Weekly VanoLib update
+name: Weekly arXiv update
 
 on:
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch: {}
-  push:
-    branches: [main]
-    paths:
-      - "scripts/collect_arxiv.py"
-      - "scripts/collect_open_math.py"
-      - ".github/workflows/update.yml"
 
 permissions:
   contents: write
 
-concurrency:
-  group: vanolib-data-update
-  cancel-in-progress: true
-
 jobs:
   update-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Collecte OpenAlex open mathematics
-        env:
-          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
-          VANOLIB_OPENALEX_LOOKBACK_DAYS: "10"
-          VANOLIB_OPENALEX_MAX_PAGES: "40"
-        run: python3 scripts/collect_open_math.py
-
       - name: Collecte arXiv (derniers jours)
         run: python3 scripts/collect_arxiv.py
-
       - name: Commit et push si changements
         run: |
           git config user.name "vanolib-bot"
           git config user.email "actions@users.noreply.github.com"
           git add site/data
-          if git diff --cached --quiet; then
-            echo "Rien de nouveau."
-          else
-            git commit -m "Mise à jour hebdomadaire VanoLib"
-            git pull --rebase origin main
-            git push
-          fi
+          git diff --cached --quiet && echo "Rien de nouveau." || (git commit -m "Mise à jour hebdomadaire arXiv" && git push)

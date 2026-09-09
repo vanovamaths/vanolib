@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="google-site-verification" content="nwSabsRumpGB6sOMVnJccjSqIy-mAOWAHp2JDzQthoU">
 <title>VanoLib — Open Mathematics Library</title>
-<meta name="description" content="Search locally indexed open mathematics references from arXiv and OpenAlex.">
+<meta name="description" content="Open mathematics library for searching, filtering, and reading arXiv papers. Updated automatically every Monday.">
 <link rel="canonical" href="https://vanovamaths.github.io/vanolib/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="VanoLib — Open Mathematics Library">
-<meta property="og:description" content="A focused open mathematics library built from arXiv and OpenAlex.">
+<meta property="og:description" content="Search, filter, and read hundreds of thousands of arXiv mathematics papers. Updated automatically every Monday.">
 <meta property="og:url" content="https://vanovamaths.github.io/vanolib/">
 <meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="style.css">
@@ -19,17 +19,18 @@
 <header class="site-header" id="home">
   <div class="header-inner">
     <a class="brand" href="#home" aria-label="VanoLib home">
-      <span class="brand-mark">∫</span>
-      <span class="brand-copy"><strong>VanoLib</strong><em>Open mathematics library</em></span>
+      <strong>VanoLib</strong>
+      <span>Mathematics at your fingertips</span>
     </a>
     <nav class="main-nav" aria-label="Main navigation">
       <a class="active" href="#home">Home</a>
-      <a href="#search-zone">Search</a>
-      <a href="#collections">Collections</a>
+      <a href="#browse">Browse</a>
+      <a href="#filters">Categories</a>
+      <a href="#search">Authors</a>
       <a href="#about">About</a>
     </nav>
-    <div class="header-search">
-      <input type="search" id="q" placeholder="Search papers, authors, topics…" autocomplete="off" aria-label="Search the library">
+    <div class="header-search" id="search">
+      <input type="search" id="q" placeholder="Search papers, authors, keywords…" autocomplete="off" aria-label="Search papers">
       <button id="search-submit" type="button" aria-label="Search">⌕</button>
     </div>
   </div>
@@ -40,139 +41,130 @@
 <main>
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero-inner">
-      <div class="hero-copy-main">
-        <div class="eyebrow">Focused mathematics · one place</div>
-        <h1 id="hero-title">Open mathematics library</h1>
-        <p>Discover mathematics papers and open-access references from two strong local indexes: arXiv and OpenAlex.</p>
+      <div class="hero-title-block">
+        <div class="eyebrow">Open access · Research · Mathematics</div>
+        <h1 id="hero-title">Open mathematics<br>library</h1>
       </div>
-      <div class="hero-math" aria-hidden="true">
-        <span>∫<sub>M</sub> ω</span>
-        <span>d² = 0</span>
-        <span>π : M → B</span>
+      <div class="hero-copy">
+        <p>Search, filter, and read arXiv mathematics papers. Updated every Monday.</p>
+        <div class="hero-note"><span></span> Knowledge drives mathematics forward.</div>
       </div>
-      <svg class="hero-wave" viewBox="0 0 620 240" aria-hidden="true">
+      <svg class="hero-wave" viewBox="0 0 520 180" aria-hidden="true">
         <g fill="none" stroke="currentColor" stroke-width="1">
-          <path d="M0 180 C80 35,160 220,250 95 S430 35,620 165"/>
-          <path d="M0 188 C82 48,164 226,254 104 S434 44,620 170"/>
-          <path d="M0 196 C84 61,168 232,258 113 S438 53,620 175"/>
-          <path d="M0 204 C86 74,172 238,262 122 S442 62,620 180"/>
-          <path d="M0 212 C88 87,176 244,266 131 S446 71,620 185"/>
+          <path d="M0 150 C70 30,130 155,205 72 S340 40,520 126"/>
+          <path d="M0 155 C72 42,132 162,208 80 S344 47,520 130"/>
+          <path d="M0 160 C74 54,134 169,211 88 S348 54,520 134"/>
+          <path d="M0 165 C76 66,136 176,214 96 S352 61,520 138"/>
+          <path d="M0 170 C78 78,138 183,217 104 S356 68,520 142"/>
+          <path d="M0 175 C80 90,140 190,220 112 S360 75,520 146"/>
         </g>
       </svg>
     </div>
   </section>
 
-  <section class="source-strip" id="collections" aria-label="Sources">
-    <div class="source-strip-inner">
-      <button class="source-tab active" data-source="all"><span>◫</span>All</button>
-      <button class="source-tab" data-source="arxiv"><span>𝛘</span>arXiv</button>
-      <button class="source-tab" data-source="openalex"><span>◎</span>OpenAlex</button>
-    </div>
-  </section>
-
   <section class="stats" aria-label="Library statistics">
     <div class="stats-inner">
-      <div class="stat-item"><div class="stat-icon">▤</div><div><strong id="stat-total">—</strong><span>References indexed locally</span></div></div>
-      <div class="stat-item"><div class="stat-icon">□</div><div><strong id="stat-updated">—</strong><span>Last collector update</span></div></div>
-      <div class="stat-item"><div class="stat-icon">◇</div><div><strong id="stat-categories">—</strong><span>Mathematics categories</span></div></div>
-      <div class="stat-item"><div class="stat-icon">∞</div><div><strong>2</strong><span>Curated source indexes</span></div></div>
+      <div class="stat-item">
+        <div class="stat-icon">▤</div>
+        <div><strong id="stat-total">—</strong><span>Total papers</span></div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon">□</div>
+        <div><strong id="stat-updated">—</strong><span>Last update</span></div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon">◇</div>
+        <div><strong id="stat-categories">—</strong><span>Mathematics categories</span></div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon">∞</div>
+        <div><strong>∞</strong><span>Open access for everyone</span></div>
+      </div>
     </div>
   </section>
 
-  <section class="workspace" id="search-zone">
+  <section class="library-shell" id="browse">
     <aside class="filters" id="filters">
-      <div class="filter-title"><span>▽</span><h2>Filter results</h2></div>
-
+      <h2>Filter papers</h2>
       <label class="field-label" for="q-side">Search</label>
-      <div class="side-search-wrap"><span>⌕</span><input type="search" id="q-side" placeholder="Title, author, keyword…" autocomplete="off"></div>
+      <div class="side-search-wrap">
+        <span>⌕</span>
+        <input type="search" id="q-side" placeholder="Search titles, authors, keywords…" autocomplete="off">
+      </div>
 
-      <label class="field-label" for="source-select">Source</label>
-      <select id="source-select">
-        <option value="all">arXiv + OpenAlex</option>
-        <option value="arxiv">arXiv</option>
-        <option value="openalex">OpenAlex</option>
-      </select>
-
-      <label class="field-label" for="cat">Subject area</label>
+      <label class="field-label" for="cat">Category</label>
       <select id="cat"><option value="">All mathematics</option></select>
 
       <label class="field-label" for="year">Year</label>
       <select id="year"><option value="">All years</option></select>
 
-      <label class="field-label" for="doc-type">Document type</label>
-      <select id="doc-type">
-        <option value="">All document types</option>
-        <option value="article">Articles / papers</option>
-        <option value="book">Books</option>
-        <option value="thesis">Theses</option>
-        <option value="preprint">Preprints</option>
+      <label class="field-label" for="sort">Sort by</label>
+      <select id="sort">
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="title">Title A–Z</option>
       </select>
 
-      <label class="field-label" for="sort">Sort by</label>
-      <select id="sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="title">Title A–Z</option></select>
-
       <button class="apply-btn" id="apply-filters" type="button">Apply filters</button>
-      <button class="reset-btn" id="reset-filters" type="button">Reset</button>
 
       <div class="source-card">
-        <div class="source-head"><strong>VanoLib collectors</strong><span class="status-dot" title="Automatic update enabled"></span></div>
-        <small>arXiv + OpenAlex.<br>Updated every Monday.<br>Last update: <span id="source-updated">—</span></small>
+        <div class="source-head"><strong>Data source</strong><span class="status-dot" title="Automatic update enabled"></span></div>
+        <div>arXiv API</div>
+        <small>Last successful update:<br><span id="source-updated">—</span></small>
       </div>
 
-      <div class="open-note">VanoLib stores bibliographic metadata and lawful open-access links. The collection stays intentionally focused on arXiv and OpenAlex.</div>
+      <blockquote>“Open mathematics<br>for a brighter tomorrow.”</blockquote>
     </aside>
 
     <div class="results-column">
       <section class="latest-section" id="latest-section">
-        <div class="section-heading"><div><span class="heading-icon">↯</span><h2>Latest additions</h2><small>from arXiv and OpenAlex</small></div><a href="#all-results">View all <span>→</span></a></div>
+        <div class="section-heading">
+          <h2>Latest articles</h2>
+          <a href="#all-articles">View all papers <span>→</span></a>
+        </div>
         <div id="latest-list" class="latest-grid"></div>
       </section>
 
-      <section class="search-section" id="all-results">
-        <div class="section-heading result-heading">
-          <div><span class="heading-icon">▤</span><h2>Search results</h2></div>
-          <div class="result-tools"><span id="result-count">Loading…</span><span id="remote-status"></span></div>
+      <section class="all-section" id="all-articles">
+        <div class="section-heading section-heading--table">
+          <h2>All articles</h2>
+          <span id="result-count" class="result-count">Loading…</span>
         </div>
-
-        <div class="results-layout">
-          <div class="results-list-wrap">
-            <div id="list" class="article-list"></div>
-            <div id="sentinel"></div>
-            <div id="empty" style="display:none;">No results.</div>
-          </div>
-
-          <aside class="detail-panel" id="detail-panel" aria-live="polite">
-            <div class="detail-source" id="detail-source">VanoLib</div>
-            <h3 id="detail-title">Select a result</h3>
-            <div class="detail-meta" id="detail-meta">Choose an item to inspect its locally stored metadata and open-access links.</div>
-            <div class="detail-actions" id="detail-actions"></div>
-            <div class="detail-tabs"><button class="active" type="button">Preview</button><span>Open-access links are shown when available.</span></div>
-            <div class="preview-empty" id="preview-empty">PDF preview will appear here when the source exposes a direct open-access PDF.</div>
-            <iframe id="detail-frame" title="Open-access PDF preview"></iframe>
-          </aside>
+        <div class="article-table-head" aria-hidden="true">
+          <span>#</span><span>Title / Authors</span><span>arXiv</span><span>Topic</span><span>Actions</span>
         </div>
+        <div id="list" class="article-list"></div>
+        <div id="sentinel"></div>
+        <div id="empty" style="display:none;">No results.</div>
       </section>
-    </div>
-  </section>
-
-  <section class="resources" id="about">
-    <div class="resources-inner">
-      <div><div class="eyebrow">Focused collection</div><h2>Two complementary indexes</h2><p>arXiv provides the core mathematics preprint collection. OpenAlex adds broader open-access scholarly references while keeping the library simple and maintainable.</p></div>
-      <div class="resource-grid">
-        <a href="https://arxiv.org/" target="_blank" rel="noopener"><strong>arXiv</strong><span>Core mathematics preprints ↗</span></a>
-        <a href="https://openalex.org/" target="_blank" rel="noopener"><strong>OpenAlex</strong><span>Open scholarly metadata ↗</span></a>
-      </div>
     </div>
   </section>
 </main>
 
-<footer>
+<footer id="about">
   <div class="footer-inner">
     <span>© 2026 <em>VanoLib.</em> Open mathematics for everyone.</span>
-    <div><a href="#home">Home</a><a href="#search-zone">Search</a><a href="#collections">Collections</a><a href="https://vanovamaths.github.io/VanovaTikZSketch/" target="_blank" rel="noopener">TikZSketch ↗</a></div>
+    <div>
+      <a href="#home">Home</a>
+      <a href="#browse">Browse</a>
+      <a href="#filters">Categories</a>
+      <a href="https://vanovamaths.github.io/VanovaTikZSketch/" target="_blank" rel="noopener">TikZSketch ↗</a>
+    </div>
     <small id="foot"></small>
   </div>
 </footer>
+
+<div id="reader" aria-hidden="true">
+  <div id="reader-panel">
+    <div id="reader-head">
+      <div class="rtitle" id="reader-title">—</div>
+      <a id="reader-abs-link" href="#" target="_blank" rel="noopener">arXiv abstract ↗</a>
+      <a id="reader-pdf-link" href="#" target="_blank" rel="noopener">Open PDF ↗</a>
+      <button id="reader-close" type="button">Close ✕</button>
+    </div>
+    <iframe id="reader-frame" title="PDF reader"></iframe>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>
