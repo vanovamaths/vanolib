@@ -21,7 +21,7 @@
   var $list=$("list"), $latest=$("latest-list"), $empty=$("empty"), $q=$("q"), $qSide=$("q-side");
   var $year=$("year"), $cat=$("cat"), $sort=$("sort"), $docType=$("doc-type"), $source=$("source-select");
   var $loadFill=$("loadbar-fill"), $sentinel=$("sentinel"), $foot=$("foot"), $resultCount=$("result-count"), $remoteStatus=$("remote-status");
-  var $detail=$("detail-panel"), $detailFrame=$("detail-frame");
+  var $detail=$("detail-panel"), $detailFrame=$("detail-frame"), $previewEmpty=$("preview-empty");
 
   var CATEGORY_NAMES={
     "math.AG":"Algebraic geometry","math.AT":"Algebraic topology","math.AP":"Analysis of PDEs","math.AC":"Commutative algebra","math.CA":"Classical analysis","math.CO":"Combinatorics","math.CT":"Category theory","math.CV":"Complex variables","math.DG":"Differential geometry","math.DS":"Dynamical systems","math.FA":"Functional analysis","math.GM":"General mathematics","math.GN":"General topology","math.GR":"Group theory","math.GT":"Geometric topology","math.HO":"History and overview","math.KT":"K-theory","math.LO":"Logic","math.MG":"Metric geometry","math.NA":"Numerical analysis","math.NT":"Number theory","math.OA":"Operator algebras","math.OC":"Optimization and control","math.PR":"Probability","math.QA":"Quantum algebra","math.RA":"Rings and algebras","math.RT":"Representation theory","math.SG":"Symplectic geometry","math.SP":"Spectral theory","math.ST":"Statistics theory","math-ph":"Mathematical physics","quant-ph":"Quantum physics"
@@ -33,7 +33,13 @@
   function niceDate(s){ if(!s)return "—"; var d=new Date(s); if(isNaN(d))return s; return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
   function categoryName(code){ return CATEGORY_NAMES[code]||code||"Mathematics"; }
 
-  function localRec(row,year){ return {source:"arxiv",id:row[0],title:row[1],authors:row[2],cat:row[3],pub:row[4],year:year,type:"preprint",abstract:"",landing:"https://arxiv.org/abs/"+row[0],pdf:"https://arxiv.org/pdf/"+row[0],lt:String(row[1]||"").toLowerCase(),la:String(row[2]||"").toLowerCase()}; }
+  function localRec(row,year){
+    return {
+      source:"arxiv",id:row[0],title:row[1],authors:row[2],cat:row[3],pub:row[4],year:year,
+      type:"preprint",abstract:"",landing:"https://arxiv.org/abs/"+row[0],pdf:"https://arxiv.org/pdf/"+row[0],
+      venue:"arXiv",provider:"arXiv",lt:String(row[1]||"").toLowerCase(),la:String(row[2]||"").toLowerCase()
+    };
+  }
 
   function loadYear(year){
     if(state.loadedYears.has(year)) return Promise.resolve();
@@ -93,13 +99,35 @@
     return words.join(" ").replace(/\s+/g," ").trim();
   }
 
+  function firstOpenLocation(w){
+    var locations=[];
+    if(w.best_oa_location)locations.push(w.best_oa_location);
+    if(w.primary_location)locations.push(w.primary_location);
+    (w.locations||[]).forEach(function(loc){ locations.push(loc); });
+    var pdf="", landing="", provider="";
+    for(var i=0;i<locations.length;i++){
+      var loc=locations[i]||{};
+      if(!provider&&loc.source&&loc.source.display_name)provider=loc.source.display_name;
+      if(!pdf&&loc.pdf_url)pdf=loc.pdf_url;
+      if(!landing&&loc.landing_page_url)landing=loc.landing_page_url;
+      if(pdf&&landing&&provider)break;
+    }
+    return {pdf:pdf,landing:landing,provider:provider};
+  }
+
   function openAlexRec(w){
     var best=w.best_oa_location||w.primary_location||{};
     var source=best.source||{};
+    var openLoc=firstOpenLocation(w);
     var authors=(w.authorships||[]).map(function(a){return a.author&&a.author.display_name;}).filter(Boolean).join("; ");
     var topic=(w.primary_topic&&w.primary_topic.display_name)||((w.topics&&w.topics[0]&&w.topics[0].display_name)||"Open access");
+    var landing=openLoc.landing||w.doi||w.id||"";
+    var provider=openLoc.provider||source.display_name||"Open-access source";
     return {
-      source:"openalex",id:w.id||"",title:w.title||w.display_name||"Untitled",authors:authors,cat:topic,pub:w.publication_date||String(w.publication_year||""),year:String(w.publication_year||""),type:openAlexType(w.type),abstract:invertedAbstract(w.abstract_inverted_index),landing:best.landing_page_url||w.doi||w.id||"",pdf:best.pdf_url||"",venue:source.display_name||"",lt:String(w.title||"").toLowerCase(),la:authors.toLowerCase()
+      source:"openalex",id:w.id||"",title:w.title||w.display_name||"Untitled",authors:authors,cat:topic,
+      pub:w.publication_date||String(w.publication_year||""),year:String(w.publication_year||""),type:openAlexType(w.type),
+      abstract:invertedAbstract(w.abstract_inverted_index),landing:landing,pdf:openLoc.pdf||"",venue:source.display_name||provider,
+      provider:provider,lt:String(w.title||"").toLowerCase(),la:authors.toLowerCase()
     };
   }
 
@@ -107,7 +135,7 @@
     var token=++state.requestToken;
     state.remote=[];
     if(state.source==="arxiv"||!state.query){ $remoteStatus.textContent=""; renderReset(); return Promise.resolve(); }
-    $remoteStatus.textContent="Searching OpenAlex…";
+    $remoteStatus.textContent="Searching open-access sources…";
     var url="https://api.openalex.org/works?search="+encodeURIComponent(state.query)+"&filter=is_oa:true&per-page=35";
     return fetch(url,{headers:{"Accept":"application/json"}}).then(function(r){ if(!r.ok)throw new Error("OpenAlex "+r.status); return r.json(); }).then(function(data){
       if(token!==state.requestToken)return;
@@ -115,21 +143,24 @@
       if(state.yearFilter)rows=rows.filter(function(r){return r.year===state.yearFilter;});
       if(state.docType)rows=rows.filter(function(r){return r.type===state.docType;});
       state.remote=rows;
-      $remoteStatus.textContent=rows.length?rows.length+" OpenAlex matches":"No OpenAlex matches";
+      $remoteStatus.textContent=rows.length?rows.length+" open-access matches":"No open-access matches";
       renderReset();
     }).catch(function(err){
       if(token!==state.requestToken)return;
-      console.warn(err); state.remote=[]; $remoteStatus.textContent="OpenAlex temporarily unavailable"; renderReset();
+      console.warn(err); state.remote=[]; $remoteStatus.textContent="External open-access search temporarily unavailable"; renderReset();
     });
   }
 
-  function sourceBadge(rec){ return '<span class="article-source '+(rec.source==="openalex"?"openalex":"")+'">'+(rec.source==="openalex"?"OpenAlex":"arXiv")+'</span>'; }
+  function sourceBadge(rec){
+    var label=rec.source==="openalex"?(rec.provider||"Open access"):"arXiv";
+    return '<span class="article-source '+(rec.source==="openalex"?"openalex":"")+'">'+escapeHTML(label)+'</span>';
+  }
 
   function actionLinks(rec,compact){
     var out=[];
-    if(rec.landing)out.push('<a href="'+escapeHTML(rec.landing)+'" target="_blank" rel="noopener">'+(rec.source==="arxiv"?"Abstract":"Record")+'</a>');
-    if(rec.pdf)out.push('<a href="'+escapeHTML(rec.pdf)+'" target="_blank" rel="noopener">PDF</a>');
-    out.push('<button type="button" class="inspect-btn">'+(compact?"Read":"Preview")+'</button>');
+    out.push('<button type="button" data-view="abstract">'+(rec.abstract?"Abstract":"Details")+'</button>');
+    if(rec.pdf)out.push('<button type="button" data-view="pdf">PDF</button>');
+    out.push('<button type="button" data-view="'+(rec.pdf?"pdf":"abstract")+'">'+(compact?"Read":"Preview")+'</button>');
     return out.join("");
   }
 
@@ -171,30 +202,86 @@
     var pool=p[0]==="openalex"?state.remote:state.local;
     return pool.find(function(r){return r.id===p.slice(1).join("|");});
   }
-  function showDetail(rec){
+
+  function showDetail(rec,mode){
     if(!rec)return;
+    mode=mode|| (rec.pdf?"pdf":"abstract");
     document.querySelectorAll(".article-row.active").forEach(function(x){x.classList.remove("active");});
     var key=rec.source+"|"+rec.id;
     document.querySelectorAll(".article-row").forEach(function(x){ if(x.getAttribute("data-key")===key)x.classList.add("active"); });
-    $("detail-source").textContent=rec.source==="openalex"?"OpenAlex":"arXiv";
+
+    $("detail-source").textContent=rec.source==="openalex"?(rec.provider||"Open access"):"arXiv";
     $("detail-source").style.background=rec.source==="openalex"?"var(--blue)":"var(--rust)";
     $("detail-title").textContent=rec.title;
     $("detail-meta").textContent=shortAuthors(rec.authors)+(rec.pub?" · "+niceDate(rec.pub):"")+(rec.venue?" · "+rec.venue:"")+(rec.cat?" · "+categoryName(rec.cat):"");
+
     var actions=[];
-    if(rec.landing)actions.push('<a href="'+escapeHTML(rec.landing)+'" target="_blank" rel="noopener">Open record ↗</a>');
-    if(rec.pdf)actions.push('<a href="'+escapeHTML(rec.pdf)+'" target="_blank" rel="noopener">Open PDF ↗</a>');
+    if(rec.abstract)actions.push('<button type="button" data-detail-view="abstract">Abstract</button>');
+    if(rec.pdf)actions.push('<button type="button" data-detail-view="pdf">Read PDF here</button>');
+    if(rec.landing)actions.push('<a href="'+escapeHTML(rec.landing)+'" target="_blank" rel="noopener">Original source ↗</a>');
     $("detail-actions").innerHTML=actions.join("");
-    $detail.classList.toggle("has-pdf",!!rec.pdf);
-    $detailFrame.src=rec.pdf||"";
+
+    var tabButton=$detail.querySelector(".detail-tabs button");
+    var tabText=$detail.querySelector(".detail-tabs span");
+
+    if(mode==="pdf"&&rec.pdf){
+      $detail.classList.add("has-pdf");
+      $detailFrame.style.display="block";
+      $detailFrame.src=rec.pdf;
+      $previewEmpty.style.display="none";
+      if(tabButton)tabButton.textContent="PDF reader";
+      if(tabText)tabText.textContent="The open-access PDF is displayed inside VanoLib.";
+    }else{
+      $detail.classList.remove("has-pdf");
+      $detailFrame.src="";
+      $detailFrame.style.display="none";
+      $previewEmpty.style.display="block";
+      if(rec.abstract){
+        $previewEmpty.textContent=rec.abstract;
+      }else if(rec.pdf){
+        $previewEmpty.textContent="This record has a readable open-access PDF. Choose ‘Read PDF here’ to open it inside VanoLib.";
+      }else{
+        $previewEmpty.textContent="VanoLib can display this record and its metadata here, but this source does not expose a direct embeddable open-access PDF.";
+      }
+      if(tabButton)tabButton.textContent="Abstract / details";
+      if(tabText)tabText.textContent="The record stays inside VanoLib; the original source is only an optional fallback.";
+    }
+
     if(window.innerWidth<1050)$detail.scrollIntoView({behavior:"smooth",block:"start"});
   }
 
   function clickHandler(e){
+    var host=e.target.closest("[data-key]");
+    if(!host)return;
+    var rec=findByKey(host.getAttribute("data-key"));
+    if(!rec)return;
+    var viewBtn=e.target.closest("button[data-view]");
+    if(viewBtn){
+      e.preventDefault();
+      e.stopPropagation();
+      showDetail(rec,viewBtn.getAttribute("data-view"));
+      return;
+    }
     if(e.target.closest("a"))return;
-    var host=e.target.closest("[data-key]"); if(!host)return;
-    var rec=findByKey(host.getAttribute("data-key")); if(rec)showDetail(rec);
+    showDetail(rec,rec.pdf?"pdf":"abstract");
   }
-  $list.addEventListener("click",clickHandler); $latest.addEventListener("click",clickHandler);
+  $list.addEventListener("click",clickHandler);
+  $latest.addEventListener("click",clickHandler);
+
+  $("detail-actions").addEventListener("click",function(e){
+    var btn=e.target.closest("button[data-detail-view]");
+    if(!btn)return;
+    var active=$list.querySelector(".article-row.active");
+    var key=active&&active.getAttribute("data-key");
+    if(!key){
+      var title=$("detail-title").textContent;
+      var rec=state.local.concat(state.remote).find(function(r){return r.title===title;});
+      if(rec)showDetail(rec,btn.getAttribute("data-detail-view"));
+      return;
+    }
+    var rec=findByKey(key);
+    if(rec)showDetail(rec,btn.getAttribute("data-detail-view"));
+  });
 
   function syncQuery(v){ $q.value=v; $qSide.value=v; state.query=v.trim().toLowerCase(); }
   function applyControls(){
@@ -226,8 +313,16 @@
     $("stat-categories").textContent=manifest.categories.length;
     $("stat-updated").textContent=niceDate(manifest.generated);
     $("source-updated").textContent=niceDate(manifest.generated);
-    $foot.textContent="Local arXiv index generated "+(manifest.generated||"—")+" · External source metadata remains owned by its respective providers.";
+    $foot.textContent="Local arXiv index generated "+(manifest.generated||"—")+" · Open-access external records are displayed inside VanoLib whenever their metadata or direct PDF is available.";
     var years=manifest.years.map(function(y){return y.year;});
-    Promise.all(years.slice(0,3).map(loadYear)).then(function(){renderLatest();renderReset();var rest=years.slice(3),i=0;function next(){if(i>=rest.length)return;loadYear(rest[i++]).then(function(){if(state.query||state.yearFilter||state.catFilter)renderReset();next();});}next();});
+    Promise.all(years.slice(0,3).map(loadYear)).then(function(){
+      renderLatest();renderReset();
+      var rest=years.slice(3),i=0;
+      function next(){
+        if(i>=rest.length)return;
+        loadYear(rest[i++]).then(function(){if(state.query||state.yearFilter||state.catFilter)renderReset();next();});
+      }
+      next();
+    });
   }).catch(function(err){console.error(err);$list.innerHTML='<div id="empty">Unable to load the local arXiv index.</div>';});
 })();
