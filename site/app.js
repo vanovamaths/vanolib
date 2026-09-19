@@ -1,316 +1,45 @@
 (function(){
   "use strict";
-
-  var state={
-    manifest:null,
-    all:[],
-    loadedYears:new Set(),
-    rendered:0,
-    chunk:70,
-    query:"",
-    yearFilter:"",
-    catFilter:"",
-    sort:"newest",
-    selected:null,
-    loadingAll:false,
-    allLoaded:false
-  };
-
+  var state={manifest:null,all:[],loaded:new Set(),query:"",year:"",category:"",sort:"newest",rendered:0,chunk:80,selected:null,loading:false,allLoaded:false};
   var $=function(id){return document.getElementById(id);};
-  var $list=$("list"),$latest=$("latest-list"),$empty=$("empty"),$q=$("q"),$qSide=$("q-side");
-  var $year=$("year"),$cat=$("cat"),$sort=$("sort"),$loadFill=$("loadbar-fill"),$sentinel=$("sentinel");
-  var $resultCount=$("result-count"),$foot=$("foot"),$frame=$("detail-frame"),$preview=$("detail-preview"),$previewEmpty=$("preview-empty");
-
-  var CATEGORY_NAMES={
-    "math.AG":"Algebraic geometry","math.AT":"Algebraic topology","math.AP":"Analysis of PDEs","math.AC":"Commutative algebra",
-    "math.CA":"Classical analysis","math.CO":"Combinatorics","math.CT":"Category theory","math.CV":"Complex variables",
-    "math.DG":"Differential geometry","math.DS":"Dynamical systems","math.FA":"Functional analysis","math.GM":"General mathematics",
-    "math.GN":"General topology","math.GR":"Group theory","math.GT":"Geometric topology","math.HO":"History and overview",
-    "math.KT":"K-theory","math.LO":"Logic","math.MG":"Metric geometry","math.NA":"Numerical analysis","math.NT":"Number theory",
-    "math.OA":"Operator algebras","math.OC":"Optimization and control","math.PR":"Probability","math.QA":"Quantum algebra",
-    "math.RA":"Rings and algebras","math.RT":"Representation theory","math.SG":"Symplectic geometry","math.SP":"Spectral theory",
-    "math.ST":"Statistics theory","math-ph":"Mathematical physics","quant-ph":"Quantum physics"
-  };
-
-  function escapeHTML(s){return String(s||"").replace(/[&<>\"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;"}[c];});}
-  function debounce(fn,ms){var t;return function(){var a=arguments;clearTimeout(t);t=setTimeout(function(){fn.apply(null,a);},ms);};}
-  function categoryName(code){return CATEGORY_NAMES[code]||code||"Mathematics";}
-  function formatNumber(n){try{return Number(n||0).toLocaleString("en-CA");}catch(e){return String(n||0);}}
-  function formatDate(value){if(!value)return "—";var d=new Date(value);if(isNaN(d.getTime()))return String(value).slice(0,10);return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}
-  function dateValue(rec){var t=Date.parse(rec.pub||"");if(!isNaN(t))return t;var y=parseInt(rec.year,10);return isNaN(y)?0:y*10000000000;}
-  function authorsArray(value){return String(value||"").split(";").map(function(x){return x.trim();}).filter(Boolean);}
-  function shortAuthors(value,max){var a=authorsArray(value);max=max||2;if(!a.length)return "Unknown author";return a.length>max?a.slice(0,max).join(", ")+" et al.":a.join(", ");}
-  function arxivPdf(id){return "https://arxiv.org/pdf/"+String(id||"");}
-  function arxivAbs(id){return "https://arxiv.org/abs/"+String(id||"");}
-
-  function recFromRow(row,year){
-    return {id:String(row[0]||""),title:row[1]||"Untitled",authors:row[2]||"",cat:row[3]||"math.GM",pub:row[4]||"",year:String(year),lt:String(row[1]||"").toLowerCase(),la:String(row[2]||"").toLowerCase()};
-  }
-
+  var list=$("list"),empty=$("empty"),q=$("q"),year=$("year"),cat=$("cat"),sort=$("sort"),sentinel=$("sentinel"),loadbar=$("loadbar-fill");
+  var names={"math.AG":"Algebraic geometry","math.AT":"Algebraic topology","math.AP":"Analysis of PDEs","math.AC":"Commutative algebra","math.CA":"Classical analysis","math.CO":"Combinatorics","math.CT":"Category theory","math.CV":"Complex variables","math.DG":"Differential geometry","math.DS":"Dynamical systems","math.FA":"Functional analysis","math.GM":"General mathematics","math.GN":"General topology","math.GR":"Group theory","math.GT":"Geometric topology","math.HO":"History and overview","math.KT":"K-theory","math.LO":"Logic","math.MG":"Metric geometry","math.NA":"Numerical analysis","math.NT":"Number theory","math.OA":"Operator algebras","math.OC":"Optimization and control","math.PR":"Probability","math.QA":"Quantum algebra","math.RA":"Rings and algebras","math.RT":"Representation theory","math.SG":"Symplectic geometry","math.SP":"Spectral theory","math.ST":"Statistics theory","math-ph":"Mathematical physics","quant-ph":"Quantum physics"};
+  function esc(value){return String(value||"").replace(/[&<>\"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;"}[c];});}
+  function categoryName(code){return names[code]||code||"Mathematics";}
+  function number(value){return Number(value||0).toLocaleString("en-US");}
+  function date(value){if(!value)return "—";var d=new Date(value);return isNaN(d.getTime())?String(value).slice(0,10):d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}
+  function dateValue(rec){var time=Date.parse(rec.pub||"");return isNaN(time)?Number(rec.year||0):time;}
+  function authors(value){return String(value||"").split(";").map(function(x){return x.trim();}).filter(Boolean);}
+  function shortAuthors(value){var a=authors(value);return !a.length?"Unknown author":a.length>2?a.slice(0,2).join(", ")+" et al.":a.join(", ");}
+  function pdf(id){return "https://arxiv.org/pdf/"+id;}
+  function abs(id){return "https://arxiv.org/abs/"+id;}
   function fetchJSON(url){return fetch(url).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});}
-
-  function loadYear(year){
-    year=String(year);
-    if(state.loadedYears.has(year))return Promise.resolve();
-    state.loadedYears.add(year);
-    return fetchJSON("data/"+year+".json").then(function(rows){
-      for(var i=0;i<rows.length;i++)state.all.push(recFromRow(rows[i],year));
-      updateProgress();
-    }).catch(function(err){state.loadedYears.delete(year);updateProgress();console.warn("VanoLib year load failed",year,err);});
-  }
-
-  function updateProgress(){
-    var total=(state.manifest&&state.manifest.years||[]).length||1;
-    var pct=Math.min(100,Math.round(100*state.loadedYears.size/total));
-    $loadFill.style.width=pct+"%";
-    if(pct>=100)setTimeout(function(){$loadFill.style.width="0%";},500);
-  }
-
-  function loadYearsSequential(years){
-    var p=Promise.resolve();
-    years.forEach(function(year){p=p.then(function(){return loadYear(year);});});
-    return p;
-  }
-
-  function loadYearsConcurrent(years,concurrency){
-    var i=0;
-    function worker(){
-      if(i>=years.length)return Promise.resolve();
-      var year=years[i++];
-      return loadYear(year).then(worker);
-    }
-    var workers=[];
-    var n=Math.min(concurrency||4,years.length);
-    for(var k=0;k<n;k++)workers.push(worker());
-    return Promise.all(workers);
-  }
-
-  function ensureAllLoaded(){
-    if(!state.manifest||state.loadingAll)return state.loadingPromise||Promise.resolve();
-    var missing=(state.manifest.years||[]).map(function(y){return String(y.year);}).filter(function(y){return !state.loadedYears.has(y);});
-    if(!missing.length){state.allLoaded=true;return Promise.resolve();}
-    state.loadingAll=true;
-    $resultCount.textContent="Loading full arXiv archive…";
-    state.loadingPromise=loadYearsConcurrent(missing,4).then(function(){
-      state.loadingAll=false;
-      state.allLoaded=state.loadedYears.size>=(state.manifest.years||[]).length;
-      renderLatest();
-      renderReset();
-    });
-    return state.loadingPromise;
-  }
-
-  function hasFilters(){return !!(state.query||state.yearFilter||state.catFilter||state.sort!=="newest");}
-
-  function matches(rec){
-    if(state.yearFilter&&rec.year!==state.yearFilter)return false;
-    if(state.catFilter&&rec.cat!==state.catFilter)return false;
-    if(state.query){
-      var hay=(rec.lt+" "+rec.la+" "+rec.id.toLowerCase()+" "+rec.cat.toLowerCase()+" "+categoryName(rec.cat).toLowerCase());
-      var terms=state.query.split(/\s+/).filter(Boolean);
-      for(var i=0;i<terms.length;i++)if(hay.indexOf(terms[i])===-1)return false;
-    }
-    return true;
-  }
-
-  function sortRecords(rows){
-    var a=rows.slice();
-    if(state.sort==="title")a.sort(function(x,y){return String(x.title).localeCompare(String(y.title));});
-    else if(state.sort==="oldest")a.sort(function(x,y){return dateValue(x)-dateValue(y);});
-    else a.sort(function(x,y){return dateValue(y)-dateValue(x);});
-    return a;
-  }
-
-  function currentSet(){
-    var base=hasFilters()?state.all.filter(matches):state.all.slice();
-    if(state.sort!=="newest"||hasFilters()||state.allLoaded)return sortRecords(base);
-    return base;
-  }
-
-  function topicPills(rec){
-    return '<span class="topic-pill">'+escapeHTML(categoryName(rec.cat))+'</span><span class="topic-pill">'+escapeHTML(rec.cat)+'</span>';
-  }
-
-  function latestHTML(rec){
-    return '<article class="latest-card" data-id="'+escapeHTML(rec.id)+'">'+
-      '<div class="latest-top"><span class="new-label">NEW</span><span>'+escapeHTML(formatDate(rec.pub))+'</span></div>'+
-      '<h3>'+escapeHTML(rec.title)+'</h3>'+
-      '<div class="latest-authors">'+escapeHTML(shortAuthors(rec.authors,2))+'</div>'+
-      '<div class="latest-arxiv">arXiv:'+escapeHTML(rec.id)+'</div>'+
-      '<div class="topic-pills">'+topicPills(rec)+'</div>'+
-      '<div class="card-actions">'+
-        '<button type="button" data-action="details">▤ Abstract</button>'+
-        '<button type="button" data-action="pdf">▤ PDF</button>'+
-        '<button type="button" data-action="read">Read →</button>'+
-      '</div></article>';
-  }
-
-  function articleHTML(rec,index){
-    return '<article class="article-row" data-id="'+escapeHTML(rec.id)+'">'+
-      '<div class="article-index">'+String(index+1).padStart(2,"0")+'</div>'+
-      '<div><div class="article-title">'+escapeHTML(rec.title)+'</div><div class="article-authors">'+escapeHTML(shortAuthors(rec.authors,2))+'</div></div>'+
-      '<div><div class="article-id">arXiv:'+escapeHTML(rec.id)+'</div><div class="article-authors">['+escapeHTML(rec.cat)+']</div></div>'+
-      '<div class="article-category">'+topicPills(rec)+'</div>'+
-      '<div class="article-date">'+escapeHTML(formatDate(rec.pub))+'</div>'+
-    '</article>';
-  }
-
-  function findRec(id){return state.all.find(function(r){return r.id===String(id);});}
-
-  function renderLatest(){
-    var recent=state.all.slice();
-    recent.sort(function(a,b){return dateValue(b)-dateValue(a);});
-    $latest.innerHTML=recent.slice(0,3).map(latestHTML).join("");
-  }
-
-  var current=[];
-  function renderReset(){
-    current=currentSet();
-    state.rendered=0;
-    $list.innerHTML="";
-    $empty.style.display=current.length?"none":"block";
-    if(!hasFilters()&&state.manifest)$resultCount.textContent=formatNumber(state.manifest.total)+" papers";
-    else $resultCount.textContent=formatNumber(current.length)+" results"+(state.loadingAll?" · loading archive…":"");
-    renderMore();
-  }
-
-  function renderMore(){
-    var end=Math.min(state.rendered+state.chunk,current.length);
-    if(end<=state.rendered)return;
-    var html="";
-    for(var i=state.rendered;i<end;i++)html+=articleHTML(current[i],i);
-    $list.insertAdjacentHTML("beforeend",html);
-    state.rendered=end;
-    markActiveRow();
-  }
-
-  var io=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting&&state.rendered<current.length)renderMore();});},{rootMargin:"700px"});
-  io.observe($sentinel);
-
-  function markActiveRow(){
-    document.querySelectorAll(".article-row.active").forEach(function(x){x.classList.remove("active");});
-    if(!state.selected)return;
-    document.querySelectorAll('.article-row[data-id="'+CSS.escape(state.selected.id)+'"]').forEach(function(x){x.classList.add("active");});
-  }
-
-  function showTab(name){
-    document.querySelectorAll("[data-detail-tab]").forEach(function(b){b.classList.toggle("active",b.getAttribute("data-detail-tab")===name);});
-    document.querySelectorAll("[data-detail-view]").forEach(function(v){v.classList.toggle("active",v.getAttribute("data-detail-view")===name);});
-    if(name==="preview"&&state.selected)loadSelectedPdf();
-  }
-
-  function loadSelectedPdf(){
-    if(!state.selected)return;
-    var url=arxivPdf(state.selected.id);
-    if($frame.getAttribute("src")!==url)$frame.src=url;
-    $preview.classList.add("detail-frame-visible");
-    $previewEmpty.textContent="Loading arXiv PDF…";
-  }
-
-  function selectRec(rec,mode){
-    if(!rec)return;
-    state.selected=rec;
-    $("detail-id").textContent="arXiv:"+rec.id;
-    $("detail-title").textContent=rec.title;
-    $("detail-authors").textContent=authorsArray(rec.authors).join(", ")||"Unknown author";
-    $("detail-tags").innerHTML=topicPills(rec);
-    $("detail-meta").textContent="arXiv:"+rec.id+"   ["+rec.cat+"]   "+formatDate(rec.pub);
-    $("detail-category").textContent=categoryName(rec.cat)+" ("+rec.cat+")";
-    $("detail-date").textContent=formatDate(rec.pub);
-    $("detail-identifier").textContent=rec.id;
-    $("detail-read").disabled=false;
-    $("detail-arxiv").href=arxivAbs(rec.id);
-    $("detail-pdf-link").href=arxivPdf(rec.id);
-    markActiveRow();
-    if(mode==="details")showTab("details");else showTab("preview");
-    if(window.innerWidth<1050)$("detail-panel").scrollIntoView({behavior:"smooth",block:"start"});
-  }
-
-  function clearDetail(){
-    state.selected=null;
-    $frame.src="";
-    $preview.classList.remove("detail-frame-visible");
-    $("detail-id").textContent="arXiv";
-    $("detail-title").textContent="Select an article";
-    $("detail-authors").textContent="Choose a paper to preview it inside VanoLib.";
-    $("detail-tags").innerHTML="";
-    $("detail-meta").textContent="";
-    $("detail-read").disabled=true;
-    $("detail-arxiv").href="https://arxiv.org/";
-    $("detail-pdf-link").href="https://arxiv.org/";
-    $("detail-category").textContent="—";$("detail-date").textContent="—";$("detail-identifier").textContent="—";
-    $previewEmpty.textContent="Select a paper to load its arXiv PDF preview.";
-    showTab("preview");
-    markActiveRow();
-  }
-
-  $latest.addEventListener("click",function(e){
-    var card=e.target.closest("[data-id]");if(!card)return;
-    var rec=findRec(card.getAttribute("data-id"));if(!rec)return;
-    var action=e.target.closest("button[data-action]");
-    if(action){var a=action.getAttribute("data-action");selectRec(rec,a==="details"?"details":"preview");}
-    else selectRec(rec,"preview");
-  });
-
-  $list.addEventListener("click",function(e){var row=e.target.closest("[data-id]");if(!row)return;selectRec(findRec(row.getAttribute("data-id")),"preview");});
-  $("detail-read").addEventListener("click",function(){if(state.selected)showTab("preview");});
-  $("detail-close").addEventListener("click",clearDetail);
-  document.querySelectorAll("[data-detail-tab]").forEach(function(btn){btn.addEventListener("click",function(){showTab(btn.getAttribute("data-detail-tab"));});});
-
-  function syncQuery(value){value=String(value||"");$q.value=value;$qSide.value=value;state.query=value.trim().toLowerCase();}
-
-  function applyFilters(){
-    syncQuery($qSide.value||$q.value);
-    state.yearFilter=$year.value;
-    state.catFilter=$cat.value;
-    state.sort=$sort.value;
-    renderReset();
-    var needsAll=!!(state.query||state.catFilter||state.sort!=="newest");
-    if(state.yearFilter){
-      loadYear(state.yearFilter).then(function(){renderLatest();renderReset();});
-    }else if(needsAll){
-      ensureAllLoaded();
-    }
-  }
-
-  var liveSearch=debounce(function(value){syncQuery(value);renderReset();if(state.query)ensureAllLoaded();},220);
-  $q.addEventListener("input",function(){liveSearch($q.value);});
-  $qSide.addEventListener("input",function(){liveSearch($qSide.value);});
-  $q.addEventListener("keydown",function(e){if(e.key==="Enter"){syncQuery($q.value);applyFilters();$("all-articles").scrollIntoView({behavior:"smooth"});}});
-  $qSide.addEventListener("keydown",function(e){if(e.key==="Enter")applyFilters();});
-  $("search-submit").addEventListener("click",function(){syncQuery($q.value);applyFilters();$("all-articles").scrollIntoView({behavior:"smooth"});});
-  $("apply-filters").addEventListener("click",applyFilters);
-  [$year,$cat,$sort].forEach(function(el){el.addEventListener("change",applyFilters);});
-  $("clear-filters").addEventListener("click",function(){syncQuery("");$year.value="";$cat.value="";$sort.value="newest";state.yearFilter="";state.catFilter="";state.sort="newest";renderReset();});
-
-  fetchJSON("data/manifest.json").then(function(manifest){
-    state.manifest=manifest;
-    (manifest.years||[]).forEach(function(y){var opt=document.createElement("option");opt.value=String(y.year);opt.textContent=String(y.year);$year.appendChild(opt);});
-    (manifest.categories||[]).forEach(function(c){var opt=document.createElement("option");opt.value=c.code;opt.textContent=categoryName(c.code)+" ("+c.code+")";$cat.appendChild(opt);});
-
-    $("stat-total").textContent=formatNumber(manifest.total);
-    $("stat-updated").textContent=formatDate(manifest.generated);
-    $("stat-categories").textContent=formatNumber((manifest.categories||[]).length);
-    $("source-updated").textContent=formatDate(manifest.generated);
-    $foot.textContent="Local arXiv index · "+formatNumber(manifest.total)+" references · generated "+formatDate(manifest.generated)+".";
-
-    var years=(manifest.years||[]).map(function(y){return String(y.year);});
-    var priority=years.slice(0,3),rest=years.slice(3);
-    return loadYearsSequential(priority).then(function(){
-      renderLatest();renderReset();
-      var i=0;
-      function next(){
-        if(i>=rest.length){state.allLoaded=true;updateProgress();return;}
-        loadYear(rest[i++]).then(function(){
-          if(hasFilters())renderReset();
-          next();
-        });
-      }
-      next();
-    });
-  }).catch(function(err){
-    console.error(err);
-    $list.innerHTML='<div id="empty">Unable to load the VanoLib arXiv index.</div>';
-    $resultCount.textContent="Unavailable";
-  });
+  function record(row,y){return {id:String(row[0]||""),title:row[1]||"Untitled",authors:row[2]||"",cat:row[3]||"math.GM",pub:row[4]||"",year:String(y),search:(String(row[0]||"")+" "+String(row[1]||"")+" "+String(row[2]||"")+" "+String(row[3]||"")).toLowerCase()};}
+  function updateProgress(){var total=(state.manifest&&state.manifest.years||[]).length||1;var pct=Math.min(100,Math.round(state.loaded.size/total*100));loadbar.style.width=pct+"%";if(pct===100)setTimeout(function(){loadbar.style.width="0";},600);}
+  function loadYear(y){y=String(y);if(state.loaded.has(y))return Promise.resolve();state.loaded.add(y);return fetchJSON("data/"+y+".json").then(function(rows){rows.forEach(function(row){state.all.push(record(row,y));});updateProgress();}).catch(function(err){state.loaded.delete(y);console.warn("Unable to load year",y,err);});}
+  function loadAll(){if(state.loading||state.allLoaded)return Promise.resolve();state.loading=true;var missing=(state.manifest.years||[]).map(function(x){return String(x.year);}).filter(function(y){return !state.loaded.has(y);});var index=0;function worker(){if(index>=missing.length)return Promise.resolve();return loadYear(missing[index++]).then(worker);}return Promise.all([worker(),worker(),worker(),worker()]).then(function(){state.loading=false;state.allLoaded=true;$("archive-status").textContent="Full archive ready";reset();});}
+  function matches(rec){if(state.year&&rec.year!==state.year)return false;if(state.category&&rec.cat!==state.category)return false;if(state.query){var terms=state.query.split(/\s+/).filter(Boolean);for(var i=0;i<terms.length;i++){if((rec.search+" "+categoryName(rec.cat).toLowerCase()).indexOf(terms[i])<0)return false;}}return true;}
+  function current(){var rows=state.all.filter(matches);rows.sort(function(a,b){if(state.sort==="title")return a.title.localeCompare(b.title);return state.sort==="oldest"?dateValue(a)-dateValue(b):dateValue(b)-dateValue(a);});return rows;}
+  var visible=[];
+  function rowHTML(rec,index){return '<article class="paper-row" data-id="'+esc(rec.id)+'" tabindex="0"><div class="paper-main"><span class="paper-number">'+String(index+1).padStart(2,"0")+'</span><div><div class="paper-title">'+esc(rec.title)+'</div><div class="paper-authors">'+esc(shortAuthors(rec.authors))+'</div></div></div><div class="paper-category"><span class="category-code">'+esc(rec.cat)+'</span><span class="category-name">'+esc(categoryName(rec.cat))+'</span></div><time class="paper-date">'+esc(date(rec.pub))+'</time><button class="read-button" type="button" aria-label="Read '+esc(rec.title)+'">▤</button></article>';}
+  function reset(){visible=current();state.rendered=0;list.innerHTML="";empty.hidden=visible.length>0;$("result-count").textContent=number(visible.length)+(state.allLoaded?" papers":" loaded papers");renderMore();markSelected();}
+  function renderMore(){var end=Math.min(state.rendered+state.chunk,visible.length),html="";for(var i=state.rendered;i<end;i++)html+=rowHTML(visible[i],i);if(html)list.insertAdjacentHTML("beforeend",html);state.rendered=end;}
+  function find(id){return state.all.find(function(rec){return rec.id===String(id);});}
+  function markSelected(){document.querySelectorAll(".paper-row.active").forEach(function(el){el.classList.remove("active");});if(state.selected)document.querySelectorAll('.paper-row[data-id="'+CSS.escape(state.selected.id)+'"]').forEach(function(el){el.classList.add("active");});}
+  function openReader(rec){if(!rec)return;state.selected=rec;$("reading-workspace").classList.add("reader-open");$("list-view").classList.remove("active");$("reader-view").classList.add("active");$("list-view").setAttribute("aria-pressed","false");$("reader-view").setAttribute("aria-pressed","true");$("detail-title").textContent=rec.title;$("detail-authors").textContent=authors(rec.authors).join(", ")||"Unknown author";$("detail-id").textContent=rec.id;$("detail-category").textContent=categoryName(rec.cat)+" ("+rec.cat+")";$("detail-date").textContent=date(rec.pub);$("detail-authors-full").textContent=authors(rec.authors).join(", ")||"Unknown author";$("detail-arxiv").href=abs(rec.id);$("detail-download").href=pdf(rec.id);var frame=$("detail-frame");if(frame.src!==pdf(rec.id))frame.src=pdf(rec.id);$("pdf-view").classList.add("has-pdf");showTab("pdf");markSelected();if(window.innerWidth<1050)$("reader-panel").scrollIntoView({behavior:"smooth",block:"start"});}
+  function closeReader(){state.selected=null;$("reading-workspace").classList.remove("reader-open");$("reader-view").classList.remove("active");$("list-view").classList.add("active");$("detail-frame").src="";$("pdf-view").classList.remove("has-pdf");markSelected();}
+  function showTab(name){document.querySelectorAll("[data-tab]").forEach(function(button){button.classList.toggle("active",button.dataset.tab===name);});document.querySelectorAll("[data-view]").forEach(function(view){view.classList.toggle("active",view.dataset.view===name);});}
+  function apply(){state.query=q.value.trim().toLowerCase();state.year=year.value;state.category=cat.value;state.sort=sort.value;reset();if(state.year&&!state.loaded.has(state.year))loadYear(state.year).then(reset);if(state.query||state.category||state.sort!=="newest")loadAll();document.querySelectorAll("[data-category]").forEach(function(button){button.classList.toggle("active",button.dataset.category===state.category);});}
+  var timer;function liveApply(){clearTimeout(timer);timer=setTimeout(apply,220);}
+  $("search-form").addEventListener("submit",function(e){e.preventDefault();apply();$("reading-workspace").scrollIntoView({behavior:"smooth",block:"start"});});
+  q.addEventListener("input",liveApply);[year,cat,sort].forEach(function(el){el.addEventListener("change",apply);});
+  $("clear-filters").addEventListener("click",function(){q.value="";year.value="";cat.value="";sort.value="newest";apply();});
+  $("subjects").addEventListener("click",function(e){var button=e.target.closest("[data-category]");if(!button)return;cat.value=button.dataset.category;apply();$("reading-workspace").scrollIntoView({behavior:"smooth",block:"start"});});
+  list.addEventListener("click",function(e){var row=e.target.closest("[data-id]");if(row)openReader(find(row.dataset.id));});
+  list.addEventListener("keydown",function(e){if((e.key==="Enter"||e.key===" ")&&e.target.closest("[data-id]")){e.preventDefault();openReader(find(e.target.closest("[data-id]").dataset.id));}});
+  $("reader-view").addEventListener("click",function(){if(state.selected)openReader(state.selected);else if(visible.length)openReader(visible[0]);});
+  $("list-view").addEventListener("click",closeReader);$("detail-close").addEventListener("click",closeReader);$("nav-search").addEventListener("click",function(){q.focus();});
+  document.querySelectorAll("[data-tab]").forEach(function(button){button.addEventListener("click",function(){showTab(button.dataset.tab);});});
+  new IntersectionObserver(function(entries){if(entries[0].isIntersecting)renderMore();},{rootMargin:"600px"}).observe(sentinel);
+  fetchJSON("data/manifest.json").then(function(manifest){state.manifest=manifest;(manifest.years||[]).forEach(function(item){var option=document.createElement("option");option.value=String(item.year);option.textContent=String(item.year);year.appendChild(option);});(manifest.categories||[]).forEach(function(item){var option=document.createElement("option");option.value=item.code;option.textContent=categoryName(item.code)+" ("+item.code+")";cat.appendChild(option);});$("archive-status").textContent=number(manifest.total)+" papers · updated "+date(manifest.generated);$("foot").textContent=number(manifest.total)+" references · updated "+date(manifest.generated)+".";var years=(manifest.years||[]).map(function(x){return String(x.year);});return Promise.all(years.slice(0,3).map(loadYear)).then(function(){reset();setTimeout(loadAll,250);});}).catch(function(err){console.error(err);$("archive-status").textContent="Index unavailable";list.innerHTML='<div class="empty">Unable to load the VanoLib index.</div>';$("result-count").textContent="Unavailable";});
 })();
