@@ -3,7 +3,8 @@
 
 var $=function(id){return document.getElementById(id);};
 var state={
-  manifest:null, rows:[], visible:[], selected:null, filter:"all", category:"all",
+  manifest:null, legacyManifest:null, mirrorManifest:null,
+  rows:[], visible:[], selected:null, filter:"all", category:"all",
   scope:"latest", rendered:0, chunk:80, zoom:100, token:0
 };
 var names={
@@ -52,8 +53,9 @@ function formatDate(v){
 }
 function yearOf(r){return String(r.pub||"").slice(0,4)}
 function baseId(id){return String(id||"").replace(/v\d+$/,"")}
-function absUrl(id){return "https://arxiv.org/abs/"+encodeURIComponent(id)}
-function pdfUrl(id){return "https://arxiv.org/pdf/"+encodeURIComponent(id)}
+function safeArxivId(id){return encodeURI(String(id||"").replace(/[^A-Za-z0-9.\/\-]/g,""))}
+function absUrl(id){return "https://arxiv.org/abs/"+safeArxivId(id)}
+function pdfUrl(id){return "https://arxiv.org/pdf/"+safeArxivId(id)}
 function scholarUrl(r){return "https://scholar.google.com/scholar?q="+encodeURIComponent('"'+r.title+'"')}
 function toRecord(row){
   return {
@@ -76,26 +78,81 @@ function setLoading(on){
   $("sync-status").textContent=on?"Loading papers…":syncText()
 }
 function syncText(){
-  if(!state.manifest)return "Library ready";
-  var g=String(state.manifest.generated||"").slice(0,10);
-  return number(state.manifest.total)+" papers · synced "+formatDate(g)
+  var m=state.mirrorManifest;
+  if(m){
+    var g=String(m.generated||"").slice(0,10);
+    if(m.backfill_complete){
+      return number(m.total)+" arXiv papers · full mirror · synced "+formatDate(g)
+    }
+    return number(m.total)+" arXiv papers mirrored · full backfill running"
+  }
+  if(!state.legacyManifest)return "Library ready";
+  var lg=String(state.legacyManifest.generated||"").slice(0,10);
+  return number(state.legacyManifest.total)+" papers · synced "+formatDate(lg)
 }
-function scopeUrl(){
-  return state.scope==="latest"?"data/latest.json":"data/"+state.scope+".json"
+function dedupeRows(rows){
+  var map=new Map();
+  rows.forEach(function(row){
+    if(!row||!row.length)return;
+    var key=baseId(String(row[0]||""));
+    var old=map.get(key);
+    if(!old||row.length>old.length)map.set(key,row)
+  });
+  return Array.from(map.values())
+}
+function mirrorYearInfo(y){
+  if(!state.mirrorManifest)return null;
+  var years=state.mirrorManifest.years||[];
+  for(var i=0;i<years.length;i++)if(String(years[i].year)===String(y))return years[i];
+  return null
+}
+function legacyYearExists(y){
+  var years=(state.legacyManifest&&state.legacyManifest.years)||[];
+  return years.some(function(x){return String(x.year)===String(y)})
+}
+function loadLatestRows(){
+  if(state.mirrorManifest){
+    return fetchJSON("data/arxiv/latest.json").catch(function(){
+      return legacyLatestRows()
+    })
+  }
+  return legacyLatestRows()
+}
+function legacyLatestRows(){
+  return fetchJSON("data/latest.json").catch(function(){
+    var y=state.legacyManifest&&state.legacyManifest.years&&state.legacyManifest.years[0];
+    if(!y)throw new Error("No latest archive shard");
+    return fetchJSON("data/"+y.year+".json").then(function(rows){return rows.slice(0,1600)})
+  })
+}
+function loadYearRows(y){
+  var info=mirrorYearInfo(y);
+  var jobs=[];
+  if(info&&Array.isArray(info.months)){
+    info.months.forEach(function(month){
+      jobs.push(fetchJSON("data/arxiv/"+month+".json").catch(function(){return []}))
+    })
+  }
+  if((!state.mirrorManifest||!state.mirrorManifest.backfill_complete)&&legacyYearExists(y)){
+    jobs.push(fetchJSON("data/"+y+".json").catch(function(){return []}))
+  }
+  if(!jobs.length&&legacyYearExists(y)){
+    jobs.push(fetchJSON("data/"+y+".json"))
+  }
+  if(!jobs.length)return Promise.resolve([]);
+  return Promise.all(jobs).then(function(parts){
+    var rows=[];parts.forEach(function(part){rows=rows.concat(part||[])});
+    return dedupeRows(rows)
+  })
 }
 function loadScope(scope){
   state.scope=scope||"latest";state.rows=[];state.selected=null;state.rendered=0;
   $("detail").innerHTML='<div class="welcome"><span class="welcome-mark">V</span><h1>Open mathematics, in one quiet library.</h1><p>Select a paper to see its details, citation tools and integrated PDF reader.</p></div>';
   var token=++state.token;setLoading(true);
-  var primary=scopeUrl();
-  var fallback=state.scope==="latest"&&state.manifest&&state.manifest.years&&state.manifest.years[0]
-    ?"data/"+state.manifest.years[0].year+".json":null;
-  fetchJSON(primary).catch(function(err){
-    if(!fallback)throw err;
-    return fetchJSON(fallback).then(function(rows){return rows.slice(0,1200)})
-  }).then(function(rows){
+  var request=state.scope==="latest"?loadLatestRows():loadYearRows(state.scope);
+  request.then(function(rows){
     if(token!==state.token)return;
-    state.rows=rows.map(toRecord);setLoading(false);apply()
+    state.rows=dedupeRows(rows).map(toRecord);setLoading(false);apply()
   }).catch(function(err){
     console.error(err);if(token!==state.token)return;
     setLoading(false);$("items").innerHTML='<div style="padding:40px;text-align:center;color:var(--fa)">Unable to load papers.</div>'
@@ -242,10 +299,33 @@ function renderChips(){
   }).join("")
 }
 function fillYears(){
+  $("year").innerHTML='<option value="">Latest</option>';
   (state.manifest.years||[]).forEach(function(y){
     var o=document.createElement("option");o.value=String(y.year);
     o.textContent=String(y.year)+" · "+number(y.count);$("year").appendChild(o)
   })
+}
+function buildCompositeManifest(){
+  var legacy=state.legacyManifest||{years:[],categories:[],total:0};
+  var mirror=state.mirrorManifest;
+  if(!mirror)return legacy;
+
+  var byYear={};
+  (legacy.years||[]).forEach(function(y){
+    byYear[String(y.year)]={year:String(y.year),count:Number(y.count||0)}
+  });
+  (mirror.years||[]).forEach(function(y){
+    var key=String(y.year),old=byYear[key];
+    byYear[key]={year:key,count:mirror.backfill_complete?Number(y.count||0):Math.max(Number(y.count||0),old?old.count:0)}
+  });
+
+  var years=Object.keys(byYear).sort(function(a,b){return b.localeCompare(a)}).map(function(k){return byYear[k]});
+  return {
+    total:mirror.backfill_complete?mirror.total:Math.max(Number(legacy.total||0),Number(mirror.total||0)),
+    generated:mirror.generated||legacy.generated,
+    years:years,
+    categories:(mirror.categories&&mirror.categories.length)?mirror.categories:(legacy.categories||[])
+  }
 }
 
 $("items").addEventListener("click",function(e){
@@ -295,8 +375,14 @@ document.addEventListener("keydown",function(e){
   }
 });
 
-fetchJSON("data/manifest.json").then(function(m){
-  state.manifest=m;renderCategories();fillYears();renderChips();$("sync-status").textContent=syncText();
+Promise.all([
+  fetchJSON("data/manifest.json").catch(function(){return {years:[],categories:[],total:0}}),
+  fetchJSON("data/arxiv/manifest.json").catch(function(){return null})
+]).then(function(values){
+  state.legacyManifest=values[0];
+  state.mirrorManifest=values[1];
+  state.manifest=buildCompositeManifest();
+  renderCategories();fillYears();renderChips();$("sync-status").textContent=syncText();
   loadScope("latest")
 }).catch(function(err){
   console.error(err);$("sync-status").textContent="Index unavailable"
