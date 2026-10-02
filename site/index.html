@@ -1,164 +1,91 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="google-site-verification" content="nwSabsRumpGB6sOMVnJccjSqIy-mAOWAHp2JDzQthoU">
-  <title>VanoLib — Mathematics Research Library</title>
-  <meta name="description" content="A fast open mathematics library with category and year navigation, integrated PDF reading, citations and Scholar discovery.">
-  <link rel="canonical" href="https://vanovamaths.github.io/vanolib/">
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="VanoLib — Mathematics Research Library">
-  <meta property="og:description" content="Browse, filter, read and cite open mathematics papers from arXiv.">
-  <meta property="og:url" content="https://vanovamaths.github.io/vanolib/">
-  <meta name="twitter:card" content="summary">
-  <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230b1020%22/><text x=%2250%22 y=%2268%22 font-size=%2260%22 font-family=%22Georgia%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22>V</text></svg>">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VanoLib — Open Mathematics Library</title>
+<meta name="description" content="Browse, read and cite open mathematics papers from arXiv in VanoLib.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topbar" id="top">
-    <div class="topbar-inner">
-      <a class="brand" href="#top" aria-label="VanoLib home">
-        <span class="brand-mark">V</span>
-        <span>VanoLib</span>
-      </a>
+<section id="A">
+  <div class="wrap">
+    <aside>
+      <div class="logo"><i>V</i><b>VanoLib</b></div>
 
-      <nav class="library-nav" aria-label="Library navigation">
-        <label>
-          <span>Category</span>
-          <select id="cat" aria-label="Category">
-            <option value="">All mathematics</option>
-          </select>
-        </label>
-        <label>
-          <span>Year</span>
-          <select id="year" aria-label="Year">
-            <option value="">Latest</option>
-          </select>
-        </label>
-      </nav>
+      <button class="nav on" data-f="all">📚 Library <span class="n" id="nall"></span></button>
+      <button class="nav" data-f="read">★ To Read <span class="n" id="nread"></span></button>
+      <button class="nav" data-f="cont">◐ In Progress <span class="n" id="ncont"></span></button>
 
-      <form class="nav-search" id="search-form" role="search">
-        <label class="sr-only" for="q">Search title, author or arXiv identifier</label>
-        <input id="q" type="search" placeholder="Search papers…" autocomplete="off">
-        <button type="submit" aria-label="Search">⌕</button>
-      </form>
+      <div class="sec">arXiv categories</div>
+      <div id="category-nav" class="category-nav"></div>
+
+      <div class="sec">Archive</div>
+      <label class="nav year-nav">◷ Year
+        <select id="year"><option value="">Latest</option></select>
+      </label>
+
+      <div class="side-foot">
+        <span id="sync-status">Loading library…</span><br>
+        Automatic sync every Monday
+      </div>
+    </aside>
+
+    <div class="list">
+      <div class="lh">
+        <h2 id="list-title">Library</h2>
+        <label class="search">⌕
+          <input id="q" placeholder="Title, author, arXiv id…">
+          <kbd>/</kbd>
+        </label>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="items" id="items"></div>
+      <div id="sentinel"></div>
     </div>
-  </header>
 
-  <div id="loadbar" aria-hidden="true"><div id="loadbar-fill"></div></div>
-
-  <main class="shell">
-    <section class="library-heading" aria-labelledby="library-title">
-      <div>
-        <p class="kicker">Open mathematics archive</p>
-        <h1 id="library-title">Research library</h1>
+    <div class="detail" id="detail">
+      <div class="welcome">
+        <span class="welcome-mark">V</span>
+        <h1>Open mathematics, in one quiet library.</h1>
+        <p>Select a paper to see its details, citation tools and integrated PDF reader.</p>
       </div>
-      <div class="heading-meta">
-        <span id="archive-status">Loading index…</span>
-        <label class="sort-control">
-          <span>Sort</span>
-          <select id="sort">
-            <option value="newest">Newest</option>
-            <option value="oldest">Oldest</option>
-            <option value="title">Title A–Z</option>
-          </select>
-        </label>
+    </div>
+  </div>
+
+  <button class="tgl" id="theme-toggle" title="Theme">☾</button>
+
+  <div class="reader" id="reader">
+    <div class="rprog" id="rprog"></div>
+    <div class="rbar">
+      <button id="reader-close">← Library</button>
+      <span class="sep"></span>
+      <button id="zoom-out">−</button>
+      <button id="zoom-label" class="mono">100%</button>
+      <button id="zoom-in">+</button>
+      <span class="sep"></span>
+      <button class="sw on" data-m="" title="Day"></button>
+      <button class="sw sepia-dot" data-m="sepia" title="Sepia"></button>
+      <button class="sw night-dot" data-m="night" title="Night"></button>
+      <span class="sep"></span>
+      <a id="reader-scholar" target="_blank" rel="noopener" title="Google Scholar">Scholar ↗</a>
+      <button id="reader-star" title="To Read">☆</button>
+      <a id="reader-arxiv" target="_blank" rel="noopener" title="Open on arXiv">arXiv ↗</a>
+    </div>
+
+    <div class="reader-meta" id="reader-meta"></div>
+    <div class="rscroll" id="rscroll">
+      <div class="pdf-shell" id="pdf-shell">
+        <iframe id="pdf-frame" title="VanoLib integrated PDF reader"></iframe>
       </div>
-    </section>
+    </div>
+    <div class="rinfo" id="rinfo"></div>
+  </div>
 
-    <section class="library-layout" id="reading-workspace">
-      <section class="papers-panel" aria-label="Paper library">
-        <div class="papers-toolbar">
-          <div>
-            <strong id="result-count">Loading…</strong>
-            <span id="scope-label">Latest papers</span>
-          </div>
-          <button id="clear-filters" type="button">Reset</button>
-        </div>
-
-        <div class="paper-head" aria-hidden="true">
-          <span>Paper</span>
-          <span>Category</span>
-          <span>Date</span>
-        </div>
-
-        <div id="list" class="paper-list"></div>
-        <div id="sentinel"></div>
-        <div id="empty" class="empty" hidden>No papers found.</div>
-      </section>
-
-      <aside class="reader-panel" id="reader-panel" aria-live="polite">
-        <div class="reader-header">
-          <div class="reader-heading">
-            <span class="reader-eyebrow">Integrated reader</span>
-            <strong id="detail-title">Select a paper</strong>
-            <span id="detail-authors">Choose any result to open its PDF and citation tools.</span>
-          </div>
-          <button id="detail-close" class="icon-button" type="button" aria-label="Close reader">×</button>
-        </div>
-
-        <div class="reader-actions">
-          <button class="active" type="button" data-tab="pdf">PDF</button>
-          <button type="button" data-tab="details">Details</button>
-          <button type="button" data-tab="cite">Cite</button>
-          <span class="action-spacer"></span>
-          <a id="detail-scholar" href="https://scholar.google.com/" target="_blank" rel="noopener">Scholar ↗</a>
-          <a id="detail-arxiv" href="https://arxiv.org/" target="_blank" rel="noopener">arXiv ↗</a>
-          <a id="detail-download" href="https://arxiv.org/" target="_blank" rel="noopener">PDF ↓</a>
-        </div>
-
-        <div class="reader-view active" id="pdf-view" data-view="pdf">
-          <div class="reader-empty" id="reader-empty">
-            <span>π</span>
-            <strong>Ready to read</strong>
-            <small>Open a result to load the paper here.</small>
-          </div>
-          <iframe id="detail-frame" title="Integrated arXiv PDF reader"></iframe>
-        </div>
-
-        <div class="reader-view details-view" data-view="details">
-          <dl>
-            <div><dt>arXiv ID</dt><dd id="detail-id">—</dd></div>
-            <div><dt>Category</dt><dd id="detail-category">—</dd></div>
-            <div><dt>Published</dt><dd id="detail-date">—</dd></div>
-            <div><dt>Authors</dt><dd id="detail-authors-full">—</dd></div>
-          </dl>
-        </div>
-
-        <div class="reader-view cite-view" data-view="cite">
-          <div class="citation-card">
-            <div class="citation-head">
-              <div>
-                <span class="reader-eyebrow">Automatic citation</span>
-                <strong>APA</strong>
-              </div>
-              <button type="button" data-copy="apa">Copy</button>
-            </div>
-            <p id="citation-apa">Select a paper to generate a citation.</p>
-          </div>
-
-          <div class="citation-card">
-            <div class="citation-head">
-              <div>
-                <span class="reader-eyebrow">Export</span>
-                <strong>BibTeX</strong>
-              </div>
-              <button type="button" data-copy="bibtex">Copy</button>
-            </div>
-            <pre id="citation-bibtex">Select a paper to generate BibTeX.</pre>
-          </div>
-        </div>
-      </aside>
-    </section>
-  </main>
-
-  <footer>
-    <strong>VanoLib</strong>
-    <span>Open mathematics, powered by arXiv.</span>
-    <span id="foot">Updated weekly.</span>
-  </footer>
-
-  <script src="app.js"></script>
+  <div class="toast" id="toast"></div>
+</section>
+<script src="app.js"></script>
 </body>
 </html>
