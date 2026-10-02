@@ -4,121 +4,159 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="google-site-verification" content="nwSabsRumpGB6sOMVnJccjSqIy-mAOWAHp2JDzQthoU">
-  <title>VanoLib — Explore Open Mathematics</title>
-  <meta name="description" content="Search, filter and read the VanoLib arXiv mathematics collection in one focused workspace.">
+  <title>VanoLib — Mathematics Research Library</title>
+  <meta name="description" content="A fast open mathematics library with category and year navigation, integrated PDF reading, citations and Scholar discovery.">
   <link rel="canonical" href="https://vanovamaths.github.io/vanolib/">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="VanoLib — Explore Open Mathematics">
-  <meta property="og:description" content="A focused open mathematics library with advanced filters and an integrated PDF reader.">
+  <meta property="og:title" content="VanoLib — Mathematics Research Library">
+  <meta property="og:description" content="Browse, filter, read and cite open mathematics papers from arXiv.">
   <meta property="og:url" content="https://vanovamaths.github.io/vanolib/">
   <meta name="twitter:card" content="summary">
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230b3a72%22/><text x=%2250%22 y=%2268%22 font-size=%2260%22 font-family=%22Georgia%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22>V</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230b1020%22/><text x=%2250%22 y=%2268%22 font-size=%2260%22 font-family=%22Georgia%22 font-weight=%22bold%22 fill=%22white%22 text-anchor=%22middle%22>V</text></svg>">
 </head>
 <body>
-  <header class="site-header" id="top">
-    <div class="nav-shell">
-      <a class="brand" href="#top" aria-label="VanoLib home">VanoLib</a>
-      <nav class="main-nav" aria-label="Main navigation">
-        <a class="active" href="#explore">Explore</a>
-        <a href="#subjects">Categories</a>
-        <a href="#about">About</a>
+  <header class="topbar" id="top">
+    <div class="topbar-inner">
+      <a class="brand" href="#top" aria-label="VanoLib home">
+        <span class="brand-mark">V</span>
+        <span>VanoLib</span>
+      </a>
+
+      <nav class="library-nav" aria-label="Library navigation">
+        <label>
+          <span>Category</span>
+          <select id="cat" aria-label="Category">
+            <option value="">All mathematics</option>
+          </select>
+        </label>
+        <label>
+          <span>Year</span>
+          <select id="year" aria-label="Year">
+            <option value="">Latest</option>
+          </select>
+        </label>
       </nav>
-      <button class="nav-search" id="nav-search" type="button" aria-label="Focus search" title="Search papers">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
-      </button>
+
+      <form class="nav-search" id="search-form" role="search">
+        <label class="sr-only" for="q">Search title, author or arXiv identifier</label>
+        <input id="q" type="search" placeholder="Search papers…" autocomplete="off">
+        <button type="submit" aria-label="Search">⌕</button>
+      </form>
     </div>
   </header>
 
   <div id="loadbar" aria-hidden="true"><div id="loadbar-fill"></div></div>
 
-  <main id="explore">
-    <section class="discovery" aria-label="Search mathematics papers">
-      <div class="search-art" aria-hidden="true">
-        <svg viewBox="0 0 540 190">
-          <g fill="none" stroke="currentColor">
-            <path d="M4 135 C82 5 130 176 209 72 S364 7 536 124"/>
-            <path d="M4 143 C86 21 138 181 216 82 S371 21 536 131"/>
-            <path d="M4 151 C90 37 146 186 223 92 S378 35 536 138"/>
-            <path d="M4 159 C94 53 154 191 230 102 S385 49 536 145"/>
-            <path d="M4 167 C98 69 162 196 237 112 S392 63 536 152"/>
-          </g>
-        </svg>
+  <main class="shell">
+    <section class="library-heading" aria-labelledby="library-title">
+      <div>
+        <p class="kicker">Open mathematics archive</p>
+        <h1 id="library-title">Research library</h1>
       </div>
-      <form class="search-form" id="search-form" role="search">
-        <label class="sr-only" for="q">Search by title, author or arXiv identifier</label>
-        <div class="search-box">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
-          <input id="q" type="search" placeholder="Title, author, or arXiv identifier…" autocomplete="off">
-          <button type="submit">Search <span>→</span></button>
-        </div>
-      </form>
-
-      <div class="filter-bar" aria-label="Advanced filters">
-        <label>Category<select id="cat"><option value="">All mathematics</option></select></label>
-        <label>Year<select id="year"><option value="">All years</option></select></label>
-        <label>Sort by<select id="sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="title">Title A–Z</option></select></label>
-        <button id="clear-filters" class="clear-button" type="button">Clear filters</button>
-        <span class="archive-status" id="archive-status">Loading index…</span>
-      </div>
-
-      <div class="subject-grid" id="subjects" aria-label="Popular mathematics categories">
-        <button type="button" data-category="math.DG"><span class="subject-icon globe">◎</span><span>Geometry</span><b>→</b></button>
-        <button type="button" data-category="math.AG"><span class="subject-icon triangle">△</span><span>Algebra</span><b>→</b></button>
-        <button type="button" data-category="math.AP"><span class="subject-icon wave">∿</span><span>Analysis</span><b>→</b></button>
-        <button type="button" data-category="math.AT"><span class="subject-icon torus">∞</span><span>Topology</span><b>→</b></button>
+      <div class="heading-meta">
+        <span id="archive-status">Loading index…</span>
+        <label class="sort-control">
+          <span>Sort</span>
+          <select id="sort">
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="title">Title A–Z</option>
+          </select>
+        </label>
       </div>
     </section>
 
-    <section class="library" aria-label="Paper library">
-      <div class="library-head">
-        <div>
-          <p class="eyebrow">Open mathematics · arXiv</p>
-          <h1>Latest papers</h1>
+    <section class="library-layout" id="reading-workspace">
+      <section class="papers-panel" aria-label="Paper library">
+        <div class="papers-toolbar">
+          <div>
+            <strong id="result-count">Loading…</strong>
+            <span id="scope-label">Latest papers</span>
+          </div>
+          <button id="clear-filters" type="button">Reset</button>
         </div>
-        <div class="library-actions">
-          <span id="result-count">Loading…</span>
-          <div class="view-switch" aria-label="Choose view">
-            <button class="active" id="list-view" type="button" aria-pressed="true">☷ <span>List</span></button>
-            <button id="reader-view" type="button" aria-pressed="false">▤ <span>Reader</span></button>
+
+        <div class="paper-head" aria-hidden="true">
+          <span>Paper</span>
+          <span>Category</span>
+          <span>Date</span>
+        </div>
+
+        <div id="list" class="paper-list"></div>
+        <div id="sentinel"></div>
+        <div id="empty" class="empty" hidden>No papers found.</div>
+      </section>
+
+      <aside class="reader-panel" id="reader-panel" aria-live="polite">
+        <div class="reader-header">
+          <div class="reader-heading">
+            <span class="reader-eyebrow">Integrated reader</span>
+            <strong id="detail-title">Select a paper</strong>
+            <span id="detail-authors">Choose any result to open its PDF and citation tools.</span>
+          </div>
+          <button id="detail-close" class="icon-button" type="button" aria-label="Close reader">×</button>
+        </div>
+
+        <div class="reader-actions">
+          <button class="active" type="button" data-tab="pdf">PDF</button>
+          <button type="button" data-tab="details">Details</button>
+          <button type="button" data-tab="cite">Cite</button>
+          <span class="action-spacer"></span>
+          <a id="detail-scholar" href="https://scholar.google.com/" target="_blank" rel="noopener">Scholar ↗</a>
+          <a id="detail-arxiv" href="https://arxiv.org/" target="_blank" rel="noopener">arXiv ↗</a>
+          <a id="detail-download" href="https://arxiv.org/" target="_blank" rel="noopener">PDF ↓</a>
+        </div>
+
+        <div class="reader-view active" id="pdf-view" data-view="pdf">
+          <div class="reader-empty" id="reader-empty">
+            <span>π</span>
+            <strong>Ready to read</strong>
+            <small>Open a result to load the paper here.</small>
+          </div>
+          <iframe id="detail-frame" title="Integrated arXiv PDF reader"></iframe>
+        </div>
+
+        <div class="reader-view details-view" data-view="details">
+          <dl>
+            <div><dt>arXiv ID</dt><dd id="detail-id">—</dd></div>
+            <div><dt>Category</dt><dd id="detail-category">—</dd></div>
+            <div><dt>Published</dt><dd id="detail-date">—</dd></div>
+            <div><dt>Authors</dt><dd id="detail-authors-full">—</dd></div>
+          </dl>
+        </div>
+
+        <div class="reader-view cite-view" data-view="cite">
+          <div class="citation-card">
+            <div class="citation-head">
+              <div>
+                <span class="reader-eyebrow">Automatic citation</span>
+                <strong>APA</strong>
+              </div>
+              <button type="button" data-copy="apa">Copy</button>
+            </div>
+            <p id="citation-apa">Select a paper to generate a citation.</p>
+          </div>
+
+          <div class="citation-card">
+            <div class="citation-head">
+              <div>
+                <span class="reader-eyebrow">Export</span>
+                <strong>BibTeX</strong>
+              </div>
+              <button type="button" data-copy="bibtex">Copy</button>
+            </div>
+            <pre id="citation-bibtex">Select a paper to generate BibTeX.</pre>
           </div>
         </div>
-      </div>
-
-      <div class="reading-workspace" id="reading-workspace">
-        <section class="papers-panel" aria-label="Papers">
-          <div class="paper-head" aria-hidden="true"><span>Paper</span><span>Category</span><span>Date</span><span>Read</span></div>
-          <div id="list" class="paper-list"></div>
-          <div id="sentinel"></div>
-          <div id="empty" class="empty" hidden>No papers found. Try a different search or filter.</div>
-        </section>
-
-        <aside class="reader-panel" id="reader-panel" aria-live="polite">
-          <div class="reader-titlebar">
-            <div><strong id="detail-title">Select a paper to begin reading</strong><span id="detail-authors">The PDF will open here without leaving your search.</span></div>
-            <div class="reader-links"><a id="detail-arxiv" href="https://arxiv.org/" target="_blank" rel="noopener">arXiv ↗</a><a id="detail-download" href="https://arxiv.org/" target="_blank" rel="noopener" aria-label="Open PDF">⇩</a><button id="detail-close" type="button" aria-label="Close reader">×</button></div>
-          </div>
-          <div class="reader-tabs" role="tablist" aria-label="Paper views">
-            <button class="active" type="button" data-tab="pdf">PDF</button>
-            <button type="button" data-tab="details">Details</button>
-          </div>
-          <div class="pdf-toolbar" aria-hidden="true"><span>▦</span><span>‹</span><span>›</span><span>PDF viewer</span><span class="toolbar-spacer"></span><span>Open access</span><span>⛶</span></div>
-          <div class="reader-view active" id="pdf-view" data-view="pdf">
-            <div class="reader-empty" id="reader-empty"><span>π</span><strong>Choose a paper</strong><small>Select any result to preview its arXiv PDF.</small></div>
-            <iframe id="detail-frame" title="Integrated arXiv PDF reader"></iframe>
-          </div>
-          <div class="reader-view details-view" id="details-view" data-view="details">
-            <dl><div><dt>arXiv ID</dt><dd id="detail-id">—</dd></div><div><dt>Category</dt><dd id="detail-category">—</dd></div><div><dt>Published</dt><dd id="detail-date">—</dd></div><div><dt>Authors</dt><dd id="detail-authors-full">—</dd></div></dl>
-          </div>
-        </aside>
-      </div>
+      </aside>
     </section>
   </main>
 
-  <footer id="about">
+  <footer>
     <strong>VanoLib</strong>
     <span>Open mathematics, powered by arXiv.</span>
-    <span id="foot">Updated every Monday.</span>
+    <span id="foot">Updated weekly.</span>
   </footer>
 
   <script src="app.js"></script>
