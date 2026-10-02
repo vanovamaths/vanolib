@@ -8,19 +8,52 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: vanolib-arxiv-update
+  cancel-in-progress: false
+
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Collecte arXiv (derniers jours)
+
+      - name: Collecte arXiv et génération des index
+        env:
+          VANOLIB_LOOKBACK_DAYS: "14"
+          VANOLIB_LATEST_LIMIT: "1200"
         run: python3 scripts/collect_arxiv.py
+
+      - name: Vérifier la fraîcheur de l'index
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path("site/data/manifest.json").read_text(encoding="utf-8"))
+          latest = json.loads(Path("site/data/latest.json").read_text(encoding="utf-8"))
+          if not latest:
+              raise SystemExit("latest.json est vide")
+          if not manifest.get("latest_date"):
+              raise SystemExit("manifest.latest_date est absent")
+          print("Dernier article:", manifest["latest_date"])
+          print("Articles indexés dans latest.json:", len(latest))
+          PY
+
       - name: Commit et push si changements
         run: |
           git config user.name "vanolib-bot"
           git config user.email "actions@users.noreply.github.com"
           git add site/data
-          git diff --cached --quiet && echo "Rien de nouveau." || (git commit -m "Mise à jour hebdomadaire arXiv" && git push)
+          if git diff --cached --quiet; then
+            echo "Rien de nouveau."
+          else
+            git commit -m "Mise à jour hebdomadaire arXiv"
+            git push
+          fi
