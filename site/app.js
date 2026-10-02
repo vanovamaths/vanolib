@@ -1,45 +1,374 @@
 (function(){
   "use strict";
-  var state={manifest:null,all:[],loaded:new Set(),query:"",year:"",category:"",sort:"newest",rendered:0,chunk:80,selected:null,loading:false,allLoaded:false};
-  var $=function(id){return document.getElementById(id);};
-  var list=$("list"),empty=$("empty"),q=$("q"),year=$("year"),cat=$("cat"),sort=$("sort"),sentinel=$("sentinel"),loadbar=$("loadbar-fill");
-  var names={"math.AG":"Algebraic geometry","math.AT":"Algebraic topology","math.AP":"Analysis of PDEs","math.AC":"Commutative algebra","math.CA":"Classical analysis","math.CO":"Combinatorics","math.CT":"Category theory","math.CV":"Complex variables","math.DG":"Differential geometry","math.DS":"Dynamical systems","math.FA":"Functional analysis","math.GM":"General mathematics","math.GN":"General topology","math.GR":"Group theory","math.GT":"Geometric topology","math.HO":"History and overview","math.KT":"K-theory","math.LO":"Logic","math.MG":"Metric geometry","math.NA":"Numerical analysis","math.NT":"Number theory","math.OA":"Operator algebras","math.OC":"Optimization and control","math.PR":"Probability","math.QA":"Quantum algebra","math.RA":"Rings and algebras","math.RT":"Representation theory","math.SG":"Symplectic geometry","math.SP":"Spectral theory","math.ST":"Statistics theory","math-ph":"Mathematical physics","quant-ph":"Quantum physics"};
-  function esc(value){return String(value||"").replace(/[&<>\"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;"}[c];});}
-  function categoryName(code){return names[code]||code||"Mathematics";}
-  function number(value){return Number(value||0).toLocaleString("en-US");}
-  function date(value){if(!value)return "—";var d=new Date(value);return isNaN(d.getTime())?String(value).slice(0,10):d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}
-  function dateValue(rec){var time=Date.parse(rec.pub||"");return isNaN(time)?Number(rec.year||0):time;}
-  function authors(value){return String(value||"").split(";").map(function(x){return x.trim();}).filter(Boolean);}
-  function shortAuthors(value){var a=authors(value);return !a.length?"Unknown author":a.length>2?a.slice(0,2).join(", ")+" et al.":a.join(", ");}
-  function pdf(id){return "https://arxiv.org/pdf/"+id;}
-  function abs(id){return "https://arxiv.org/abs/"+id;}
-  function fetchJSON(url){return fetch(url).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});}
-  function record(row,y){return {id:String(row[0]||""),title:row[1]||"Untitled",authors:row[2]||"",cat:row[3]||"math.GM",pub:row[4]||"",year:String(y),search:(String(row[0]||"")+" "+String(row[1]||"")+" "+String(row[2]||"")+" "+String(row[3]||"")).toLowerCase()};}
-  function updateProgress(){var total=(state.manifest&&state.manifest.years||[]).length||1;var pct=Math.min(100,Math.round(state.loaded.size/total*100));loadbar.style.width=pct+"%";if(pct===100)setTimeout(function(){loadbar.style.width="0";},600);}
-  function loadYear(y){y=String(y);if(state.loaded.has(y))return Promise.resolve();state.loaded.add(y);return fetchJSON("data/"+y+".json").then(function(rows){rows.forEach(function(row){state.all.push(record(row,y));});updateProgress();}).catch(function(err){state.loaded.delete(y);console.warn("Unable to load year",y,err);});}
-  function loadAll(){if(state.loading||state.allLoaded)return Promise.resolve();state.loading=true;var missing=(state.manifest.years||[]).map(function(x){return String(x.year);}).filter(function(y){return !state.loaded.has(y);});var index=0;function worker(){if(index>=missing.length)return Promise.resolve();return loadYear(missing[index++]).then(worker);}return Promise.all([worker(),worker(),worker(),worker()]).then(function(){state.loading=false;state.allLoaded=true;$("archive-status").textContent="Full archive ready";reset();});}
-  function matches(rec){if(state.year&&rec.year!==state.year)return false;if(state.category&&rec.cat!==state.category)return false;if(state.query){var terms=state.query.split(/\s+/).filter(Boolean);for(var i=0;i<terms.length;i++){if((rec.search+" "+categoryName(rec.cat).toLowerCase()).indexOf(terms[i])<0)return false;}}return true;}
-  function current(){var rows=state.all.filter(matches);rows.sort(function(a,b){if(state.sort==="title")return a.title.localeCompare(b.title);return state.sort==="oldest"?dateValue(a)-dateValue(b):dateValue(b)-dateValue(a);});return rows;}
+
+  var state={
+    manifest:null,
+    rows:[],
+    scope:"latest",
+    query:"",
+    category:"",
+    sort:"newest",
+    rendered:0,
+    chunk:70,
+    selected:null,
+    requestToken:0
+  };
+
+  var names={
+    "math.AC":"Commutative algebra","math.AG":"Algebraic geometry","math.AP":"Analysis of PDEs",
+    "math.AT":"Algebraic topology","math.CA":"Classical analysis","math.CO":"Combinatorics",
+    "math.CT":"Category theory","math.CV":"Complex variables","math.DG":"Differential geometry",
+    "math.DS":"Dynamical systems","math.FA":"Functional analysis","math.GM":"General mathematics",
+    "math.GN":"General topology","math.GR":"Group theory","math.GT":"Geometric topology",
+    "math.HO":"History and overview","math.KT":"K-theory","math.LO":"Logic",
+    "math.MG":"Metric geometry","math.MP":"Mathematical physics","math.NA":"Numerical analysis",
+    "math.NT":"Number theory","math.OA":"Operator algebras","math.OC":"Optimization and control",
+    "math.PR":"Probability","math.QA":"Quantum algebra","math.RA":"Rings and algebras",
+    "math.RT":"Representation theory","math.SG":"Symplectic geometry","math.SP":"Spectral theory",
+    "math.ST":"Statistics theory","math-ph":"Mathematical physics"
+  };
+
+  function $(id){return document.getElementById(id);}
+  var list=$("list"), q=$("q"), year=$("year"), cat=$("cat"), sort=$("sort"), sentinel=$("sentinel");
   var visible=[];
-  function rowHTML(rec,index){return '<article class="paper-row" data-id="'+esc(rec.id)+'" tabindex="0"><div class="paper-main"><span class="paper-number">'+String(index+1).padStart(2,"0")+'</span><div><div class="paper-title">'+esc(rec.title)+'</div><div class="paper-authors">'+esc(shortAuthors(rec.authors))+'</div></div></div><div class="paper-category"><span class="category-code">'+esc(rec.cat)+'</span><span class="category-name">'+esc(categoryName(rec.cat))+'</span></div><time class="paper-date">'+esc(date(rec.pub))+'</time><button class="read-button" type="button" aria-label="Read '+esc(rec.title)+'">▤</button></article>';}
-  function reset(){visible=current();state.rendered=0;list.innerHTML="";empty.hidden=visible.length>0;$("result-count").textContent=number(visible.length)+(state.allLoaded?" papers":" loaded papers");renderMore();markSelected();}
-  function renderMore(){var end=Math.min(state.rendered+state.chunk,visible.length),html="";for(var i=state.rendered;i<end;i++)html+=rowHTML(visible[i],i);if(html)list.insertAdjacentHTML("beforeend",html);state.rendered=end;}
-  function find(id){return state.all.find(function(rec){return rec.id===String(id);});}
-  function markSelected(){document.querySelectorAll(".paper-row.active").forEach(function(el){el.classList.remove("active");});if(state.selected)document.querySelectorAll('.paper-row[data-id="'+CSS.escape(state.selected.id)+'"]').forEach(function(el){el.classList.add("active");});}
-  function openReader(rec){if(!rec)return;state.selected=rec;$("reading-workspace").classList.add("reader-open");$("list-view").classList.remove("active");$("reader-view").classList.add("active");$("list-view").setAttribute("aria-pressed","false");$("reader-view").setAttribute("aria-pressed","true");$("detail-title").textContent=rec.title;$("detail-authors").textContent=authors(rec.authors).join(", ")||"Unknown author";$("detail-id").textContent=rec.id;$("detail-category").textContent=categoryName(rec.cat)+" ("+rec.cat+")";$("detail-date").textContent=date(rec.pub);$("detail-authors-full").textContent=authors(rec.authors).join(", ")||"Unknown author";$("detail-arxiv").href=abs(rec.id);$("detail-download").href=pdf(rec.id);var frame=$("detail-frame");if(frame.src!==pdf(rec.id))frame.src=pdf(rec.id);$("pdf-view").classList.add("has-pdf");showTab("pdf");markSelected();if(window.innerWidth<1050)$("reader-panel").scrollIntoView({behavior:"smooth",block:"start"});}
-  function closeReader(){state.selected=null;$("reading-workspace").classList.remove("reader-open");$("reader-view").classList.remove("active");$("list-view").classList.add("active");$("detail-frame").src="";$("pdf-view").classList.remove("has-pdf");markSelected();}
-  function showTab(name){document.querySelectorAll("[data-tab]").forEach(function(button){button.classList.toggle("active",button.dataset.tab===name);});document.querySelectorAll("[data-view]").forEach(function(view){view.classList.toggle("active",view.dataset.view===name);});}
-  function apply(){state.query=q.value.trim().toLowerCase();state.year=year.value;state.category=cat.value;state.sort=sort.value;reset();if(state.year&&!state.loaded.has(state.year))loadYear(state.year).then(reset);if(state.query||state.category||state.sort!=="newest")loadAll();document.querySelectorAll("[data-category]").forEach(function(button){button.classList.toggle("active",button.dataset.category===state.category);});}
-  var timer;function liveApply(){clearTimeout(timer);timer=setTimeout(apply,220);}
-  $("search-form").addEventListener("submit",function(e){e.preventDefault();apply();$("reading-workspace").scrollIntoView({behavior:"smooth",block:"start"});});
-  q.addEventListener("input",liveApply);[year,cat,sort].forEach(function(el){el.addEventListener("change",apply);});
-  $("clear-filters").addEventListener("click",function(){q.value="";year.value="";cat.value="";sort.value="newest";apply();});
-  $("subjects").addEventListener("click",function(e){var button=e.target.closest("[data-category]");if(!button)return;cat.value=button.dataset.category;apply();$("reading-workspace").scrollIntoView({behavior:"smooth",block:"start"});});
-  list.addEventListener("click",function(e){var row=e.target.closest("[data-id]");if(row)openReader(find(row.dataset.id));});
-  list.addEventListener("keydown",function(e){if((e.key==="Enter"||e.key===" ")&&e.target.closest("[data-id]")){e.preventDefault();openReader(find(e.target.closest("[data-id]").dataset.id));}});
-  $("reader-view").addEventListener("click",function(){if(state.selected)openReader(state.selected);else if(visible.length)openReader(visible[0]);});
-  $("list-view").addEventListener("click",closeReader);$("detail-close").addEventListener("click",closeReader);$("nav-search").addEventListener("click",function(){q.focus();});
-  document.querySelectorAll("[data-tab]").forEach(function(button){button.addEventListener("click",function(){showTab(button.dataset.tab);});});
-  new IntersectionObserver(function(entries){if(entries[0].isIntersecting)renderMore();},{rootMargin:"600px"}).observe(sentinel);
-  fetchJSON("data/manifest.json").then(function(manifest){state.manifest=manifest;(manifest.years||[]).forEach(function(item){var option=document.createElement("option");option.value=String(item.year);option.textContent=String(item.year);year.appendChild(option);});(manifest.categories||[]).forEach(function(item){var option=document.createElement("option");option.value=item.code;option.textContent=categoryName(item.code)+" ("+item.code+")";cat.appendChild(option);});$("archive-status").textContent=number(manifest.total)+" papers · updated "+date(manifest.generated);$("foot").textContent=number(manifest.total)+" references · updated "+date(manifest.generated)+".";var years=(manifest.years||[]).map(function(x){return String(x.year);});return Promise.all(years.slice(0,3).map(loadYear)).then(function(){reset();setTimeout(loadAll,250);});}).catch(function(err){console.error(err);$("archive-status").textContent="Index unavailable";list.innerHTML='<div class="empty">Unable to load the VanoLib index.</div>';$("result-count").textContent="Unavailable";});
+
+  function esc(value){
+    return String(value == null ? "" : value).replace(/[&<>"]/g,function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];
+    });
+  }
+
+  function categoryName(code){return names[code] || code || "Mathematics";}
+  function number(value){return Number(value || 0).toLocaleString("en-US");}
+
+  function formatDate(value){
+    if(!value)return "—";
+    var d=new Date(value+"T00:00:00Z");
+    return isNaN(d.getTime()) ? String(value).slice(0,10) :
+      d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+  }
+
+  function authors(value){
+    return String(value || "").split(";").map(function(x){return x.trim();}).filter(Boolean);
+  }
+
+  function shortAuthors(value){
+    var a=authors(value);
+    if(!a.length)return "Unknown author";
+    return a.length>3 ? a.slice(0,3).join(", ")+" et al." : a.join(", ");
+  }
+
+  function baseId(id){return String(id || "").replace(/v\d+$/,"");}
+  function pdfUrl(id){return "https://arxiv.org/pdf/"+encodeURIComponent(id);}
+  function absUrl(id){return "https://arxiv.org/abs/"+encodeURIComponent(id);}
+
+  function scholarUrl(rec){
+    return "https://scholar.google.com/scholar?q="+encodeURIComponent('"'+rec.title+'"');
+  }
+
+  function fetchJSON(url){
+    return fetch(url,{cache:"no-store"}).then(function(r){
+      if(!r.ok)throw new Error("HTTP "+r.status+" for "+url);
+      return r.json();
+    });
+  }
+
+  function toRecord(row){
+    var pub=String(row[4] || "");
+    return {
+      id:String(row[0] || ""),
+      title:String(row[1] || "Untitled"),
+      authors:String(row[2] || ""),
+      cat:String(row[3] || "math.GM"),
+      pub:pub,
+      year:pub.slice(0,4),
+      search:(String(row[0] || "")+" "+String(row[1] || "")+" "+String(row[2] || "")+" "+String(row[3] || "")).toLowerCase()
+    };
+  }
+
+  function setLoading(on){
+    $("loadbar-fill").style.width=on ? "42%" : "0";
+    document.body.classList.toggle("is-loading",on);
+  }
+
+  function loadScope(scope){
+    state.scope=scope || "latest";
+    var token=++state.requestToken;
+    setLoading(true);
+    $("scope-label").textContent=state.scope==="latest" ? "Latest papers" : "Papers from "+state.scope;
+
+    var primary=state.scope==="latest" ? "data/latest.json" : "data/"+state.scope+".json";
+    var fallback=state.scope==="latest" && state.manifest && state.manifest.years && state.manifest.years[0]
+      ? "data/"+state.manifest.years[0].year+".json" : null;
+
+    return fetchJSON(primary).catch(function(err){
+      if(!fallback)throw err;
+      console.warn("latest.json unavailable, using newest yearly shard",err);
+      return fetchJSON(fallback).then(function(rows){return rows.slice(0,1200);});
+    }).then(function(rows){
+      if(token!==state.requestToken)return;
+      state.rows=rows.map(toRecord);
+      setLoading(false);
+      reset();
+    }).catch(function(err){
+      if(token!==state.requestToken)return;
+      console.error(err);
+      setLoading(false);
+      state.rows=[];
+      reset();
+      $("archive-status").textContent="Index unavailable";
+    });
+  }
+
+  function dateValue(rec){
+    var t=Date.parse(rec.pub+"T00:00:00Z");
+    return isNaN(t) ? 0 : t;
+  }
+
+  function matches(rec){
+    if(state.category && rec.cat!==state.category)return false;
+    if(state.query){
+      var hay=(rec.search+" "+categoryName(rec.cat)).toLowerCase();
+      var terms=state.query.split(/\s+/).filter(Boolean);
+      for(var i=0;i<terms.length;i++){
+        if(hay.indexOf(terms[i])<0)return false;
+      }
+    }
+    return true;
+  }
+
+  function current(){
+    var rows=state.rows.filter(matches);
+    rows.sort(function(a,b){
+      if(state.sort==="title")return a.title.localeCompare(b.title);
+      if(state.sort==="oldest")return dateValue(a)-dateValue(b);
+      return dateValue(b)-dateValue(a);
+    });
+    return rows;
+  }
+
+  function rowHTML(rec){
+    return '<article class="paper-row" data-id="'+esc(rec.id)+'" tabindex="0">'+
+      '<div class="paper-main">'+
+        '<strong class="paper-title">'+esc(rec.title)+'</strong>'+
+        '<span class="paper-authors">'+esc(shortAuthors(rec.authors))+'</span>'+
+      '</div>'+
+      '<div class="paper-category"><span>'+esc(rec.cat)+'</span><small>'+esc(categoryName(rec.cat))+'</small></div>'+
+      '<time class="paper-date">'+esc(formatDate(rec.pub))+'</time>'+
+      '<button class="read-button" type="button" aria-label="Open '+esc(rec.title)+'">Read →</button>'+
+    '</article>';
+  }
+
+  function reset(){
+    visible=current();
+    state.rendered=0;
+    list.innerHTML="";
+    $("empty").hidden=visible.length>0;
+    $("result-count").textContent=number(visible.length)+" papers";
+    renderMore();
+    markSelected();
+  }
+
+  function renderMore(){
+    var end=Math.min(state.rendered+state.chunk,visible.length);
+    if(end<=state.rendered)return;
+    var html="";
+    for(var i=state.rendered;i<end;i++)html+=rowHTML(visible[i]);
+    list.insertAdjacentHTML("beforeend",html);
+    state.rendered=end;
+  }
+
+  function find(id){
+    for(var i=0;i<state.rows.length;i++){
+      if(state.rows[i].id===String(id))return state.rows[i];
+    }
+    return null;
+  }
+
+  function markSelected(){
+    document.querySelectorAll(".paper-row.active").forEach(function(el){el.classList.remove("active");});
+    if(!state.selected)return;
+    document.querySelectorAll(".paper-row").forEach(function(el){
+      if(el.dataset.id===state.selected.id)el.classList.add("active");
+    });
+  }
+
+  function apaCitation(rec){
+    var a=authors(rec.authors);
+    var authorText=a.length ? a.join(", ") : "Unknown author";
+    return authorText+" ("+(rec.year || "n.d.")+"). "+rec.title+". arXiv. https://arxiv.org/abs/"+baseId(rec.id);
+  }
+
+  function bibtexKey(rec){
+    var a=authors(rec.authors);
+    var surname=(a[0] || "unknown").split(/\s+/).slice(-1)[0].replace(/[^A-Za-z0-9]/g,"") || "unknown";
+    var word=(rec.title.match(/[A-Za-z0-9]+/) || ["paper"])[0];
+    return (surname+rec.year+word).replace(/[^A-Za-z0-9]/g,"");
+  }
+
+  function bibtexCitation(rec){
+    var a=authors(rec.authors).join(" and ");
+    return "@article{"+bibtexKey(rec)+",\n"+
+      "  title = {"+rec.title.replace(/[{}]/g,"")+"},\n"+
+      "  author = {"+a.replace(/[{}]/g,"")+"},\n"+
+      "  year = {"+(rec.year || "")+"},\n"+
+      "  eprint = {"+baseId(rec.id)+"},\n"+
+      "  archivePrefix = {arXiv},\n"+
+      "  primaryClass = {"+rec.cat+"},\n"+
+      "  url = {https://arxiv.org/abs/"+baseId(rec.id)+"}\n"+
+      "}";
+  }
+
+  function showTab(name){
+    document.querySelectorAll("[data-tab]").forEach(function(button){
+      button.classList.toggle("active",button.dataset.tab===name);
+    });
+    document.querySelectorAll("[data-view]").forEach(function(view){
+      view.classList.toggle("active",view.dataset.view===name);
+    });
+  }
+
+  function openReader(rec){
+    if(!rec)return;
+    state.selected=rec;
+    $("reading-workspace").classList.add("reader-open");
+    $("detail-title").textContent=rec.title;
+    $("detail-authors").textContent=authors(rec.authors).join(", ") || "Unknown author";
+    $("detail-id").textContent=rec.id;
+    $("detail-category").textContent=categoryName(rec.cat)+" ("+rec.cat+")";
+    $("detail-date").textContent=formatDate(rec.pub);
+    $("detail-authors-full").textContent=authors(rec.authors).join(", ") || "Unknown author";
+    $("detail-arxiv").href=absUrl(rec.id);
+    $("detail-download").href=pdfUrl(rec.id);
+    $("detail-scholar").href=scholarUrl(rec);
+    $("citation-apa").textContent=apaCitation(rec);
+    $("citation-bibtex").textContent=bibtexCitation(rec);
+
+    var frame=$("detail-frame");
+    frame.src=pdfUrl(rec.id)+"#view=FitH";
+    $("pdf-view").classList.add("has-pdf");
+    showTab("pdf");
+    markSelected();
+
+    if(window.innerWidth<980){
+      $("reader-panel").scrollIntoView({behavior:"smooth",block:"start"});
+    }
+  }
+
+  function closeReader(){
+    state.selected=null;
+    $("reading-workspace").classList.remove("reader-open");
+    $("detail-frame").src="";
+    $("pdf-view").classList.remove("has-pdf");
+    markSelected();
+  }
+
+  function applyFilters(){
+    state.query=q.value.trim().toLowerCase();
+    state.category=cat.value;
+    state.sort=sort.value;
+    reset();
+  }
+
+  function copyCitation(kind,button){
+    if(!state.selected)return;
+    var text=kind==="bibtex" ? bibtexCitation(state.selected) : apaCitation(state.selected);
+    navigator.clipboard.writeText(text).then(function(){
+      var old=button.textContent;
+      button.textContent="Copied";
+      setTimeout(function(){button.textContent=old;},1100);
+    }).catch(function(){
+      window.prompt("Copy citation:",text);
+    });
+  }
+
+  var timer;
+  q.addEventListener("input",function(){
+    clearTimeout(timer);
+    timer=setTimeout(applyFilters,160);
+  });
+
+  $("search-form").addEventListener("submit",function(e){
+    e.preventDefault();
+    applyFilters();
+  });
+
+  cat.addEventListener("change",applyFilters);
+  sort.addEventListener("change",applyFilters);
+  year.addEventListener("change",function(){
+    closeReader();
+    loadScope(year.value || "latest");
+  });
+
+  $("clear-filters").addEventListener("click",function(){
+    q.value="";
+    cat.value="";
+    sort.value="newest";
+    applyFilters();
+  });
+
+  list.addEventListener("click",function(e){
+    var row=e.target.closest("[data-id]");
+    if(row)openReader(find(row.dataset.id));
+  });
+
+  list.addEventListener("keydown",function(e){
+    var row=e.target.closest("[data-id]");
+    if(row && (e.key==="Enter" || e.key===" ")){
+      e.preventDefault();
+      openReader(find(row.dataset.id));
+    }
+  });
+
+  $("detail-close").addEventListener("click",closeReader);
+
+  document.querySelectorAll("[data-tab]").forEach(function(button){
+    button.addEventListener("click",function(){showTab(button.dataset.tab);});
+  });
+
+  document.querySelectorAll("[data-copy]").forEach(function(button){
+    button.addEventListener("click",function(){copyCitation(button.dataset.copy,button);});
+  });
+
+  new IntersectionObserver(function(entries){
+    if(entries[0].isIntersecting)renderMore();
+  },{rootMargin:"700px"}).observe(sentinel);
+
+  document.addEventListener("keydown",function(e){
+    if(e.key==="Escape" && state.selected)closeReader();
+    if(e.key==="/" && document.activeElement!==q){
+      e.preventDefault();
+      q.focus();
+    }
+  });
+
+  fetchJSON("data/manifest.json").then(function(manifest){
+    state.manifest=manifest;
+
+    (manifest.years || []).forEach(function(item){
+      var option=document.createElement("option");
+      option.value=String(item.year);
+      option.textContent=String(item.year)+" · "+number(item.count);
+      year.appendChild(option);
+    });
+
+    (manifest.categories || []).forEach(function(item){
+      var option=document.createElement("option");
+      option.value=item.code;
+      option.textContent=categoryName(item.code)+" · "+number(item.count);
+      cat.appendChild(option);
+    });
+
+    var fresh=manifest.latest_date ? "latest "+formatDate(manifest.latest_date) : "updated "+formatDate(String(manifest.generated || "").slice(0,10));
+    $("archive-status").textContent=number(manifest.total)+" papers · "+fresh;
+    $("foot").textContent=number(manifest.total)+" references · weekly automatic update.";
+
+    return loadScope("latest");
+  }).catch(function(err){
+    console.error(err);
+    $("archive-status").textContent="Index unavailable";
+    $("result-count").textContent="Unavailable";
+    $("empty").hidden=false;
+    $("empty").textContent="Unable to load the VanoLib index.";
+  });
 })();
