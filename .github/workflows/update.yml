@@ -1,59 +1,69 @@
-name: Weekly arXiv update
+name: Daily arXiv sync
 
 on:
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "15 5 * * *"
   workflow_dispatch: {}
 
 permissions:
   contents: write
 
 concurrency:
-  group: vanolib-arxiv-update
+  group: vanolib-arxiv-data
   cancel-in-progress: false
 
 jobs:
   update-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout latest main
+        uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 1
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Collecte arXiv et génération des index
-        env:
-          VANOLIB_LOOKBACK_DAYS: "14"
-          VANOLIB_LATEST_LIMIT: "1200"
-        run: python3 scripts/collect_arxiv.py
+      - name: Synchronize recent arXiv metadata
+        run: |
+          python3 scripts/harvest_arxiv_oai.py recent \
+            --lookback-days 21 \
+            --max-pages 180 \
+            --latest-limit 5000
 
-      - name: Vérifier la fraîcheur de l'index
+      - name: Validate freshness
         run: |
           python3 - <<'PY'
           import json
           from pathlib import Path
-          manifest = json.loads(Path("site/data/manifest.json").read_text(encoding="utf-8"))
-          latest = json.loads(Path("site/data/latest.json").read_text(encoding="utf-8"))
+
+          root = Path("site/data/arxiv")
+          manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+          latest = json.loads((root / "latest.json").read_text(encoding="utf-8"))
+
           if not latest:
-              raise SystemExit("latest.json est vide")
+              raise SystemExit("latest.json is empty")
           if not manifest.get("latest_date"):
-              raise SystemExit("manifest.latest_date est absent")
-          print("Dernier article:", manifest["latest_date"])
-          print("Articles indexés dans latest.json:", len(latest))
+              raise SystemExit("manifest.latest_date is missing")
+
+          print("Newest submission:", manifest["latest_date"])
+          print("Latest index size:", len(latest))
+          print("Mirrored records:", manifest.get("total"))
           PY
 
-      - name: Commit et push si changements
+      - name: Commit and publish metadata changes
         run: |
           git config user.name "vanolib-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add site/data
+          git add site/data/arxiv
           if git diff --cached --quiet; then
-            echo "Rien de nouveau."
+            echo "No new arXiv metadata."
           else
-            git commit -m "Mise à jour hebdomadaire arXiv"
-            git push
+            git commit -m "Daily arXiv metadata sync"
+            git pull --rebase origin main
+            git push origin main
           fi
