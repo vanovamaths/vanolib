@@ -5,7 +5,8 @@ var $=function(id){return document.getElementById(id);};
 var state={
   manifest:null, legacyManifest:null, mirrorManifest:null,
   rows:[], visible:[], selected:null, filter:"all", category:"all",
-  scope:"latest", rendered:0, chunk:80, zoom:100, token:0
+  scope:"latest", rendered:0, chunk:80, zoom:100, pdfPage:1, fitWidth:true,
+  pdfTheme:readStore("vanolib:pdf-theme","white"), token:0
 };
 var names={
   "math.AC":"Commutative algebra","math.AG":"Algebraic geometry","math.AP":"Analysis of PDEs",
@@ -252,32 +253,89 @@ function copyText(text,msg){
     document.execCommand("copy");ta.remove();toast(msg)
   }
 }
+function pdfFragment(){
+  var zoom=state.fitWidth?"page-width":String(state.zoom);
+  return "#page="+state.pdfPage+"&zoom="+zoom+"&toolbar=0&navpanes=0&scrollbar=1"
+}
+function updatePdfLocation(){
+  if(!state.selected)return;
+  var frame=$("pdf-frame");
+  var next=pdfUrl(state.selected.id)+pdfFragment();
+  if(frame.src!==next)frame.src=next;
+  $("reader-page").value=state.pdfPage;
+  $("zoom-label").textContent=state.fitWidth?"Fit":state.zoom+"%";
+  $("rinfo").textContent="Page "+state.pdfPage+" · "+(state.fitWidth?"Fit width":state.zoom+"%");
+}
+function applyPdfTheme(theme){
+  var allowed={white:true,yellow:true,black:true};
+  state.pdfTheme=allowed[theme]?theme:"white";
+  writeStore("vanolib:pdf-theme",state.pdfTheme);
+  var reader=$("reader");
+  reader.classList.remove("pdf-theme-white","pdf-theme-yellow","pdf-theme-black");
+  reader.classList.add("pdf-theme-"+state.pdfTheme);
+  document.querySelectorAll(".pdf-theme-button").forEach(function(button){
+    button.classList.toggle("on",button.dataset.pdfTheme===state.pdfTheme)
+  })
+}
 function openReader(){
   var r=state.selected;if(!r)return;
-  $("reader").classList.add("on");
-  $("pdf-frame").src=pdfUrl(r.id)+"#view=FitH";
+  var reader=$("reader");
+  reader.classList.add("on");
+  state.pdfPage=1;state.zoom=100;state.fitWidth=true;
+
+  $("reader-title").textContent=r.title;
+  $("reader-subtitle").textContent=shortAuthor(r.authors)+" · "+r.cat;
+  $("reader-side-title").textContent=r.title;
+  $("reader-side-authors").textContent=authors(r.authors).join(", ")||"Unknown author";
+  $("reader-side-id").textContent=r.id;
+  $("reader-side-category").textContent=r.cat;
+  $("reader-side-date").textContent=formatDate(r.pub);
   $("reader-arxiv").href=absUrl(r.id);
+  $("reader-download").href=pdfUrl(r.id);
   $("reader-star").textContent=favorites.has(r.id)?"★":"☆";
-  $("reader-meta").innerHTML='<strong>'+esc(r.title)+'</strong>'+esc(shortAuthor(r.authors))+'<br>'+esc(r.cat)+' · '+esc(formatDate(r.pub));
-  state.zoom=100;applyZoom();
-  progress[r.id]=Math.max(progress[r.id]||0,5);writeStore("vanolib:progress",progress);
-  $("rprog").style.width=(progress[r.id]||5)+"%";
-  $("rinfo").textContent=Math.round(progress[r.id]||5)+"% · "+r.id;
+  $("reader-status").textContent="PDF integrated in VanoLib · arXiv "+r.id;
+
+  applyPdfTheme(state.pdfTheme);
+  updatePdfLocation();
+
+  progress[r.id]=Math.max(progress[r.id]||0,5);
+  writeStore("vanolib:progress",progress);
   renderList()
 }
 function closeReader(){
-  $("reader").classList.remove("on");$("pdf-frame").src="";
-  if(state.selected){progress[state.selected.id]=Math.max(progress[state.selected.id]||0,12);writeStore("vanolib:progress",progress)}
+  $("reader").classList.remove("on");
+  $("pdf-frame").src="";
+  if(document.fullscreenElement)document.exitFullscreen().catch(function(){});
+  if(state.selected){
+    progress[state.selected.id]=Math.max(progress[state.selected.id]||0,12);
+    writeStore("vanolib:progress",progress)
+  }
   renderList();renderDetail()
 }
-function applyZoom(){
-  $("zoom-label").textContent=state.zoom+"%";
-  $("pdf-shell").style.zoom=state.zoom/100
+function setPdfPage(page){
+  state.pdfPage=Math.max(1,parseInt(page,10)||1);
+  if(state.selected){
+    progress[state.selected.id]=Math.min(95,Math.max(progress[state.selected.id]||0,5+state.pdfPage));
+    writeStore("vanolib:progress",progress)
+  }
+  updatePdfLocation()
 }
-function setMode(mode,button){
-  $("reader").className="reader on"+(mode?" "+mode:"");
-  document.querySelectorAll(".rbar .sw").forEach(function(b){b.classList.toggle("on",b===button)});
-  $("pdf-frame").style.filter=mode==="night"?"invert(.9) hue-rotate(180deg)":"none"
+function setPdfZoom(value){
+  state.fitWidth=false;
+  state.zoom=Math.max(50,Math.min(220,parseInt(value,10)||100));
+  updatePdfLocation()
+}
+function fitPdfWidth(){
+  state.fitWidth=true;
+  updatePdfLocation()
+}
+function toggleReaderFullscreen(){
+  var reader=$("reader");
+  if(document.fullscreenElement){
+    document.exitFullscreen().catch(function(){})
+  }else if(reader.requestFullscreen){
+    reader.requestFullscreen().catch(function(){})
+  }
 }
 function renderCategories(){
   var cats=(state.manifest.categories||[]).slice(0,16),h="";
@@ -355,9 +413,18 @@ $("theme-toggle").onclick=function(){
   $("A").classList.toggle("dark");this.textContent=$("A").classList.contains("dark")?"☀":"☾"
 };
 $("reader-close").onclick=closeReader;
-$("zoom-in").onclick=function(){state.zoom=Math.min(160,state.zoom+10);applyZoom()};
-$("zoom-out").onclick=function(){state.zoom=Math.max(70,state.zoom-10);applyZoom()};
-document.querySelectorAll(".rbar .sw").forEach(function(b){b.onclick=function(){setMode(b.dataset.m,b)}});
+$("page-prev").onclick=function(){setPdfPage(state.pdfPage-1)};
+$("page-next").onclick=function(){setPdfPage(state.pdfPage+1)};
+$("reader-page").addEventListener("change",function(){setPdfPage(this.value)});
+$("reader-page").addEventListener("keydown",function(e){if(e.key==="Enter"){this.blur();setPdfPage(this.value)}});
+$("zoom-in").onclick=function(){setPdfZoom((state.fitWidth?100:state.zoom)+10)};
+$("zoom-out").onclick=function(){setPdfZoom((state.fitWidth?100:state.zoom)-10)};
+$("zoom-fit").onclick=fitPdfWidth;
+$("zoom-label").onclick=fitPdfWidth;
+$("reader-fullscreen").onclick=toggleReaderFullscreen;
+document.querySelectorAll(".pdf-theme-button").forEach(function(button){
+  button.onclick=function(){applyPdfTheme(button.dataset.pdfTheme)}
+});
 $("reader-star").onclick=function(){
   if(!state.selected)return;toggleFavorite(state.selected);
   this.textContent=favorites.has(state.selected.id)?"★":"☆";renderDetail()
