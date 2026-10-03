@@ -9,6 +9,7 @@ A complete pass over math + math-ph (~700k records incl. cross-lists) takes ~1�
 
     python3 scripts/harvest_math_oai.py full            # everything since 1992 (resumes if interrupted)
     python3 scripts/harvest_math_oai.py recent --days 7 # incremental update
+    python3 scripts/harvest_math_oai.py auto            # what GitHub Actions runs every 6 h
     python3 scripts/harvest_math_oai.py status
 
 Output (same formats as the rest of the site):
@@ -243,18 +244,29 @@ class Library:
 
 
 # ── harvest ─────────────────────────────────────────────────────────────────
-def harvest(mode, days=7):
-    client, lib = Client(), Library()
-    state = load(STATE, {})
+STATE_RECENT = os.path.join(ROOT, "scripts", "oai_recent.json")
+
+
+def harvest(mode, days=7, deadline=None, client=None, lib=None):
+    """Run one harvest. Returns True when finished, False when it stopped at the time budget
+    (progress is saved and the next run continues from there)."""
+    client, lib = client or Client(), lib or Library()
+    path = STATE if mode == "full" else STATE_RECENT
+    state = load(path, {})
     if mode == "full" and state.get("mode") == "full" and not state.get("done"):
-        log(f"Resuming full harvest — set {state['set']}, page {state['page']}")
+        log(f"Resuming full harvest — set {state.get('set')}, page {state.get('page')}, from {state.get('last_ds')}")
     else:
         state = {"mode": mode, "sets": math_sets(client), "set_i": 0, "token": None, "page": 0, "done": False,
                  "from": None if mode == "full" else (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d"),
                  "started": datetime.now(timezone.utc).isoformat()}
-    log(f"Sets: {state['sets']}")
+    log(f"[{mode}] sets: {state['sets']}" + (f" · from {state['from']}" if state.get("from") else ""))
     t0, pages_run = time.time(), 0
     while state["set_i"] < len(state["sets"]):
+        if deadline and time.time() > deadline:
+            lib.flush()
+            save(path, state)
+            log(f"⏸  time budget reached after {pages_run} pages — progress saved, the next run continues")
+            return False
         spec = state["set"] = state["sets"][state["set_i"]]
         if state["token"]:
             params = {"verb": "ListRecords", "resumptionToken": state["token"]}
@@ -280,11 +292,10 @@ def harvest(mode, days=7):
         state["token"] = token or None
         if size:
             state["size"] = size
-        done_n = state["page"] * 1000
         eta = ""
         if state.get("size") and pages_run > 2:
             per = (time.time() - t0) / pages_run
-            eta = f" · ETA {max(0, (state['size'] - done_n) / 1000 * per) / 60:.0f} min"
+            eta = f" · ETA {max(0, (state['size'] - state['page'] * 1000) / 1000 * per) / 60:.0f} min"
         log(f"{spec} page {state['page']}: +{len(rows)} records (new {lib.added}, updated {lib.updated}){eta}")
         if not token:                                   # this set is finished
             state["set_i"] += 1
@@ -293,16 +304,35 @@ def harvest(mode, days=7):
             state.pop("size", None)
         if pages_run % FLUSH_EVERY == 0 or not token:
             lib.flush()
-            save(STATE, state)
+            save(path, state)
             log(f"  ✓ checkpoint saved ({len(lib.rows)} papers)")
     state["done"] = True
     state["finished"] = datetime.now(timezone.utc).isoformat()
     lib.flush()
-    save(STATE, state)
-    log(f"Harvest complete: {len(lib.rows)} papers · {lib.added} new · {lib.updated} updated")
+    save(path, state)
+    log(f"[{mode}] complete: {len(lib.rows)} papers · {lib.added} new · {lib.updated} updated")
+    return True
+
+
+def build_index():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import build_index
-    build_index.main()
+    import build_index as bi
+    bi.main()
+
+
+def auto(days, budget_min):
+    """What the GitHub Action runs: finish the complete harvest if needed (within the time
+    budget), then always pick up the latest days, then rebuild the search index."""
+    deadline = time.time() + budget_min * 60
+    client, lib = Client(), Library()
+    full = load(STATE, {})
+    finished = True
+    if not (full.get("mode") == "full" and full.get("done")):
+        finished = harvest("full", deadline=deadline, client=client, lib=lib)
+    if finished:
+        harvest("recent", days=days, deadline=deadline + 20 * 60, client=client, lib=lib)
+    lib.flush()
+    build_index()
 
 
 def main():
@@ -311,12 +341,19 @@ def main():
     sub.add_parser("full", help="harvest all of arXiv math + math-ph since the beginning (resumable)")
     r = sub.add_parser("recent", help="incremental update")
     r.add_argument("--days", type=int, default=7)
+    au = sub.add_parser("auto", help="GitHub Action mode: continue the full harvest, then recent days")
+    au.add_argument("--days", type=int, default=4)
+    au.add_argument("--budget", type=int, default=int(os.environ.get("VANOLIB_BUDGET_MIN", "300")),
+                    help="minutes before stopping cleanly (default 300)")
     sub.add_parser("status", help="show saved progress")
     a = ap.parse_args()
     if a.cmd == "status":
-        print(json.dumps(load(STATE, {"state": "never run"}), indent=2))
+        print(json.dumps({"full": load(STATE, None), "recent": load(STATE_RECENT, None)}, indent=2))
+    elif a.cmd == "auto":
+        auto(a.days, a.budget)
     else:
         harvest(a.cmd, getattr(a, "days", 7))
+        build_index()
 
 
 if __name__ == "__main__":
