@@ -7,7 +7,7 @@ on:
       - ".github/workflows/arxiv-backfill.yml"
       - "scripts/harvest_arxiv_oai.py"
   schedule:
-    - cron: "17 */2 * * *"
+    - cron: "17 * * * *"
   workflow_dispatch: {}
 
 permissions:
