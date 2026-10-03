@@ -57,30 +57,67 @@
 
   <button class="tgl" id="theme-toggle" title="Theme">☾</button>
 
-  <div class="reader" id="reader">
-    <div class="rprog" id="rprog"></div>
-    <div class="rbar">
-      <button id="reader-close">← Library</button>
-      <span class="sep"></span>
-      <button id="zoom-out">−</button>
-      <button id="zoom-label" class="mono">100%</button>
-      <button id="zoom-in">+</button>
-      <span class="sep"></span>
-      <button class="sw on" data-m="" title="Day"></button>
-      <button class="sw sepia-dot" data-m="sepia" title="Sepia"></button>
-      <button class="sw night-dot" data-m="night" title="Night"></button>
-      <span class="sep"></span>
-      <button id="reader-star" title="To Read">☆</button>
-      <a id="reader-arxiv" target="_blank" rel="noopener" title="Open on arXiv">arXiv ↗</a>
-    </div>
+  <div class="reader pdf-theme-white" id="reader">
+    <div class="preview-window">
+      <div class="preview-titlebar">
+        <div class="preview-left">
+          <button id="reader-close" class="mac-control" type="button" aria-label="Back to library">←</button>
+          <div class="preview-title">
+            <strong id="reader-title">PDF Reader</strong>
+            <span id="reader-subtitle">VanoLib</span>
+          </div>
+        </div>
 
-    <div class="reader-meta" id="reader-meta"></div>
-    <div class="rscroll" id="rscroll">
-      <div class="pdf-shell" id="pdf-shell">
-        <iframe id="pdf-frame" title="VanoLib integrated PDF reader"></iframe>
+        <div class="preview-center">
+          <button id="page-prev" class="tool-button" type="button" aria-label="Previous page">‹</button>
+          <label class="page-control">
+            <input id="reader-page" type="number" min="1" value="1" inputmode="numeric" aria-label="Page number">
+          </label>
+          <button id="page-next" class="tool-button" type="button" aria-label="Next page">›</button>
+          <span class="toolbar-divider"></span>
+          <button id="zoom-out" class="tool-button" type="button" aria-label="Zoom out">−</button>
+          <button id="zoom-label" class="zoom-label mono" type="button">Fit</button>
+          <button id="zoom-in" class="tool-button" type="button" aria-label="Zoom in">+</button>
+          <button id="zoom-fit" class="tool-button fit-button" type="button">Fit width</button>
+        </div>
+
+        <div class="preview-right">
+          <div class="pdf-themes" aria-label="PDF color theme">
+            <button class="pdf-theme-button white on" data-pdf-theme="white" type="button" title="White PDF"></button>
+            <button class="pdf-theme-button yellow" data-pdf-theme="yellow" type="button" title="Yellow PDF"></button>
+            <button class="pdf-theme-button black" data-pdf-theme="black" type="button" title="Black PDF"></button>
+          </div>
+          <button id="reader-star" class="tool-button" type="button" title="To Read">☆</button>
+          <button id="reader-fullscreen" class="tool-button" type="button" title="Full screen">⛶</button>
+          <a id="reader-download" class="tool-button" target="_blank" rel="noopener" title="Open PDF">↗</a>
+        </div>
+      </div>
+
+      <div class="preview-body">
+        <aside class="preview-sidebar">
+          <div class="preview-document-mark">PDF</div>
+          <strong id="reader-side-title">Document</strong>
+          <span id="reader-side-authors">—</span>
+          <dl>
+            <div><dt>arXiv</dt><dd id="reader-side-id">—</dd></div>
+            <div><dt>Category</dt><dd id="reader-side-category">—</dd></div>
+            <div><dt>Published</dt><dd id="reader-side-date">—</dd></div>
+          </dl>
+          <a id="reader-arxiv" class="sidebar-link" target="_blank" rel="noopener">Open arXiv page ↗</a>
+        </aside>
+
+        <main class="preview-canvas" id="preview-canvas">
+          <div class="pdf-stage" id="pdf-stage">
+            <iframe id="pdf-frame" title="VanoLib integrated PDF reader" loading="eager"></iframe>
+          </div>
+        </main>
+      </div>
+
+      <div class="preview-statusbar">
+        <span id="reader-status">PDF integrated in VanoLib</span>
+        <span class="mono" id="rinfo">Page 1 · Fit width</span>
       </div>
     </div>
-    <div class="rinfo" id="rinfo"></div>
   </div>
 
   <div class="toast" id="toast"></div>
