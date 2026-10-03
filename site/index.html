@@ -406,7 +406,7 @@ body.reading-A #switch{display:none}
   <div class="top">
     <div class="lg" id="C-logo"><i>V</i>VanoLib</div>
     <div class="crumb" id="C-crumb"></div>
-    <div class="tsearch">⌕ <input id="C-q" placeholder="Search the library…" style="flex:1"></div>
+    <div class="tsearch">⌕ <input id="C-q" placeholder="Search the library…  ⌘K" style="flex:1"></div>
     <div class="av">YA</div>
   </div>
   <div class="home" id="C-home"></div>
@@ -692,16 +692,30 @@ document.addEventListener('keydown',e=>{const r=READERS.find(r=>r.active());if(r
    Personal data (To Read, progress, highlights, notes, settings) stays in this browser (localStorage). */
 const ST={get(k,d){try{const v=localStorage.getItem('vanolib:'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('vanolib:'+k,JSON.stringify(v))}catch(e){}}};
 const DEF_SETTINGS={concept:'A',dark_a:false,pinned:['math.SG','math.AG','math.DG','math-ph','math.QA'],reader_theme:{A:'day',B:'night',C:'day'}};
-const DB={man:null,latest:[],shards:{},all:null,allP:null,index:new Map(),memo:{key:null,list:null},abs:ST.get('abs',{})};
+const DB={labs:new Map(),latestP:null,man:null,latest:[],shards:{},all:null,allP:null,index:new Map(),memo:{key:null,list:null},abs:ST.get('abs',{})};
 const getJSON=u=>fetch(u,{cache:'no-cache'}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json()});
 const baseId=id=>String(id||'').replace(/v\d+$/,'');
 function addRows(rows){for(const r of rows||[]){if(!r||!r[0])continue;const k=baseId(r[0]),o=DB.index.get(k);if(!o||(r.length>o.length)||(r[0]>o[0]&&r.length>=o.length))DB.index.set(k,r)}}
 function toArt(r){const id=r[0];const st=(ST.get('state',{}))[id];const tr=ST.get('toread',{});
   return{uid:id,ext_id:id,title:r[1]||'Untitled',authors:String(r[2]||'').split(';').map(s=>s.trim()).filter(Boolean).join(', '),category:r[3]||'',published:r[4]||'',year:String(r[4]||'').slice(0,4),
-    abstract:r[5]||DB.abs[baseId(id)]||'',link:'https://arxiv.org/abs/'+id,has_pdf:false,to_read:!!tr[id],progress:st?Math.round(100*(st.ratio||0)):0,page:st&&st.page,pages:st&&st.pages}}
+    abstract:r[5]||DB.labs.get(baseId(id))||DB.abs[baseId(id)]||'',link:'https://arxiv.org/abs/'+id,has_pdf:false,to_read:!!tr[id],progress:st?Math.round(100*(st.ratio||0)):0,page:st&&st.page,pages:st&&st.pages}}
 function metaRow(a){return[a.uid,a.title,(a.authors||'').split(', ').join('; '),a.category,a.published]}
-async function boot(){if(DB.man)return;DB.man=await getJSON('data/manifest.json').catch(()=>({total:0,years:[],categories:[]}));
-  DB.latest=await getJSON('data/latest.json').catch(async()=>{const y=(DB.man.years||[])[0];return y?(await getJSON('data/'+y.year+'.json')).slice(0,3000):[]});addRows(DB.latest)}
+async function boot(){if(DB.man)return;[DB.man,IX.meta]=await Promise.all([getJSON('data/manifest.json').catch(()=>({total:0,years:[],categories:[]})),getJSON('data/idx/meta.json').catch(()=>null)]);
+  DB.latestP=getJSON('data/latest.json').catch(()=>[]).then(L=>{DB.latest=L;L.forEach(r=>{if(r[5])DB.labs.set(baseId(r[0]),r[5])});addRows(L);return L})}
+/* instant search: tiny prefix shards + bitmaps (see scripts/build_index.py) */
+const IX={meta:null,shards:{},chunks:{},cats:null};
+const STOPW=new Set('the of and in on for to an with by from at its is are as or via into de la le et des du en les un une'.split(' '));
+const normQ=t=>String(t||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>=2&&!STOPW.has(w));
+const ixShard=k=>IX.shards[k]||(IX.shards[k]=getJSON('data/idx/'+k+'.json').catch(()=>({})));
+const ixChunk=c=>IX.chunks[c]||(IX.chunks[c]=getJSON('data/docs/'+c+'.json').catch(()=>[]));
+function ixBits(str,bits){let p=0;for(const x of str.split(',')){p+=parseInt(x,36);bits[p]=1}}
+async function ixSearch(q,cat){const n=IX.meta.n,terms=[...new Set(normQ(q))];
+  const sets=await Promise.all(terms.map(async t=>{const S=await ixShard(t.slice(0,2)),b=new Uint8Array(n);for(const w in S)if(w.startsWith(t))ixBits(S[w],b);return b}));
+  if(cat){if(!IX.cats)IX.cats=getJSON('data/idx/_cats.json').catch(()=>({}));const C=await IX.cats,b=new Uint8Array(n);if(C[cat])ixBits(C[cat],b);sets.push(b)}
+  if(!sets.length)return null;const acc=sets[0];for(let j=1;j<sets.length;j++){const b=sets[j];for(let i=0;i<n;i++)acc[i]&=b[i]}
+  const ids=[];for(let i=n-1;i>=0;i--)if(acc[i])ids.push(i);return ids}
+async function ixRows(ids){const C=IX.meta.chunk,cs=[...new Set(ids.map(i=>Math.floor(i/C)))],got=await Promise.all(cs.map(ixChunk)),m={};cs.forEach((c,j)=>m[c]=got[j]);
+  return ids.map(i=>(m[Math.floor(i/C)]||[])[i%C]).filter(Boolean)}
 function loadAll(){if(DB.all)return Promise.resolve(DB.all);if(DB.allP)return DB.allP;
   DB.allP=(async()=>{const ys=(DB.man.years||[]).map(y=>y.year);let i=0;
     const work=async()=>{while(i<ys.length){const y=ys[i++];try{const rows=await getJSON('data/'+y+'.json');DB.shards[y]=rows;addRows(rows)}catch(e){}}};
@@ -712,23 +726,30 @@ function loadAll(){if(DB.all)return Promise.resolve(DB.all);if(DB.allP)return DB
 const inProgress=()=>Object.entries(ST.get('state',{})).filter(([k,s])=>s.ratio>0&&s.ratio<.97&&!k.startsWith('file:'));
 const WEB={
   async overview(){await boot();const tr=ST.get('toread',{});const C={};(DB.man.categories||[]).forEach(c=>C[c.code]=c.count);
-    return{total:DB.man.total||DB.latest.length,to_read:Object.keys(tr).length,pdfs:0,in_progress:inProgress().length,categories:C,last_sync:DB.man.generated||null,settings:WEB.settings(),sync:{}}},
-  async articles({filter='all',cat='',q='',sort='new',offset=0,limit=60}){await boot();q=(q||'').trim().toLowerCase();const key=[filter,cat,q,sort].join('|');let L;
-    if(DB.memo.key===key&&DB.memo.list&&(filter!=='all'||DB.all||offset+limit<=DB.memo.list.length))L=DB.memo.list;else{
-      if(filter==='read'){const tr=ST.get('toread',{});L=Object.values(tr).sort((a,b)=>(b.added||0)-(a.added||0)).map(x=>DB.index.get(baseId(x.row[0]))||x.row)}
-      else if(filter==='cont'){L=inProgress().sort((a,b)=>(b[1].updated||0)-(a[1].updated||0)).map(([k,s])=>DB.index.get(baseId(k))||s.row).filter(Boolean)}
-      else if(filter==='pdf')L=[];
-      else if(q||cat||offset+limit>DB.latest.length)L=await loadAll();
-      else L=DB.latest;
-      if(cat)L=L.filter(r=>r[3]===cat);
-      if(q){const ts=q.split(/\s+/).filter(Boolean);L=L.filter(r=>{const s=r.s||(r.s=(r[0]+' '+r[1]+' '+r[2]+' '+r[3]).toLowerCase());return ts.every(t=>s.includes(t))})}
-      if(sort==='old')L=[...L].sort((a,b)=>String(a[4]).localeCompare(String(b[4])));
-      else if(sort==='az')L=[...L].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'en',{sensitivity:'base'}));
-      DB.memo={key,list:L}}
-    const total=filter==='all'&&!q&&!cat&&!DB.all?(DB.man.total||L.length):L.length;
-    return{items:L.slice(offset,offset+limit).map(toArt),total:offset===0?total:null,offset}},
+    return{total:(IX.meta&&IX.meta.n)||DB.man.total||0,to_read:Object.keys(tr).length,pdfs:0,in_progress:inProgress().length,categories:C,last_sync:DB.man.generated||null,settings:WEB.settings(),sync:{}}},
+  async articles({filter='all',cat='',q='',sort='new',offset=0,limit=60}){await boot();const qq=(q||'').trim();const key=[filter,cat,qq.toLowerCase(),sort].join('|');
+    if(filter==='read'||filter==='cont'||filter==='pdf'||!IX.meta){let L;
+      if(DB.memo.key===key)L=DB.memo.list;else{
+        if(filter==='read'){const tr=ST.get('toread',{});L=Object.values(tr).sort((a,b)=>(b.added||0)-(a.added||0)).map(x=>DB.index.get(baseId(x.row[0]))||x.row)}
+        else if(filter==='cont')L=inProgress().sort((a,b)=>(b[1].updated||0)-(a[1].updated||0)).map(([k,s])=>DB.index.get(baseId(k))||s.row).filter(Boolean);
+        else if(filter==='pdf')L=[];else L=await DB.latestP;
+        if(cat)L=L.filter(r=>r[3]===cat);const ts=normQ(qq);
+        if(ts.length)L=L.filter(r=>{const w=normQ(r[0]+' '+r[1]+' '+r[2]+' '+r[3]);return ts.every(t=>w.some(x=>x.startsWith(t)))});
+        DB.memo={key,list:L}}
+      return{items:L.slice(offset,offset+limit).map(toArt),total:offset===0?L.length:null,offset}}
+    let ids;if(DB.memo.key===key)ids=DB.memo.list;else{
+      ids=(qq||cat)?await ixSearch(qq,cat):null;
+      if(ids&&sort==='old')ids=ids.slice().reverse();
+      if(ids&&sort==='az'&&ids.length<=4000){const rows=await ixRows(ids);ids=ids.map((id,j)=>[id,String((rows[j]||[])[1]||'')]).sort((a,b)=>a[1].localeCompare(b[1],'en',{sensitivity:'base'})).map(p=>p[0])}
+      DB.memo={key,list:ids}}
+    const n=IX.meta.n;let page=[];
+    if(ids)page=ids.slice(offset,offset+limit);
+    else if(sort==='old')for(let i=offset;i<Math.min(n,offset+limit);i++)page.push(i);
+    else for(let i=n-1-offset;i>=Math.max(0,n-offset-limit);i--)page.push(i);
+    const rows=await ixRows(page);addRows(rows);
+    return{items:rows.map(toArt),total:offset===0?(ids?ids.length:n):null,offset}},
   async article({uid}){await boot();const r=DB.index.get(baseId(uid))||(ST.get('toread',{})[uid]||{}).row||((ST.get('state',{})[uid])||{}).row;return r?toArt(r):null},
-  async desk(){await boot();const S=ST.get('state',{}),tr=ST.get('toread',{});
+  async desk(){await boot();await DB.latestP;const S=ST.get('state',{}),tr=ST.get('toread',{});
     const cont=inProgress().sort((a,b)=>(b[1].updated||0)-(a[1].updated||0)).slice(0,8).map(([k,s])=>toArt(DB.index.get(baseId(k))||s.row)).filter(a=>a.title);
     const queue=Object.values(tr).sort((a,b)=>(b.added||0)-(a.added||0)).slice(0,12).map(x=>toArt(DB.index.get(baseId(x.row[0]))||x.row));
     const pin=WEB.settings().pinned||[];const feed=DB.latest.filter(r=>pin.includes(r[3])).slice(0,40).map(toArt);
@@ -738,7 +759,7 @@ const WEB={
   async toggle_read({uid}){const tr=ST.get('toread',{});let v;if(tr[uid]){delete tr[uid];v=false}else{const a=await WEB.article({uid});tr[uid]={row:a?metaRow(a):[uid,uid,'','',''],added:Date.now()};v=true}ST.set('toread',tr);DB.memo.key=null;return{to_read:v}},
   async bibtex({uid}){const a=await WEB.article({uid});if(!a)return{bibtex:''};const first=((a.authors.split(',')[0]||'anon').trim().split(/\s+/).pop()||'anon').replace(/[^A-Za-z]/g,'');
     return{bibtex:`@misc{${first}${a.year},\n  title = {${a.title}},\n  author = {${a.authors.split(', ').join(' and ')}},\n  year = {${a.year}},\n  eprint = {${baseId(a.ext_id)}},\n  archivePrefix = {arXiv},\n  primaryClass = {${a.category}}\n}`}},
-  async abstract({uid}){const k=baseId(uid);if(DB.abs[k])return{abstract:DB.abs[k]};
+  async abstract({uid}){const k=baseId(uid);await DB.latestP;if(DB.labs.get(k))return{abstract:DB.labs.get(k)};if(DB.abs[k])return{abstract:DB.abs[k]};
     try{const x=await fetch('https://export.arxiv.org/api/query?id_list='+encodeURIComponent(k)).then(r=>r.text());const d=new DOMParser().parseFromString(x,'application/xml');
       const s=(d.querySelector('entry > summary')||{}).textContent;if(s){DB.abs[k]=s.trim().replace(/\s+\n/g,'\n');const keys=Object.keys(DB.abs);if(keys.length>400)delete DB.abs[keys[0]];ST.set('abs',DB.abs);return{abstract:DB.abs[k]}}}catch(e){}
     return{abstract:''}},
@@ -833,14 +854,16 @@ function debounce(f,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(
     if(n.dataset.c){cat=cat===n.dataset.c?'':n.dataset.c;f='all';$('#A-title').textContent=cat||'Library'}
     else if(n.dataset.f){f=n.dataset.f;cat='';$('#A-title').textContent=n.dataset.l}
     $$('#A aside .nav').forEach(x=>x.classList.toggle('on',(x.dataset.f&&x.dataset.f===f&&!cat)||(x.dataset.c&&x.dataset.c===cat)));sel=null;P.reset()});
-  $('#A-q').oninput=debounce(()=>{sel=null;P.reset()},250);
+  $('#A-q').oninput=debounce(()=>{sel=null;P.reset()},120);
   $('#A-syncb').onclick=syncNow;
   const applyDark=d=>{$('#A').classList.toggle('dark',d);$('#A-tgl').textContent=d?'☀':'☾'};
   $('#A-tgl').onclick=()=>{const d=!$('#A').classList.contains('dark');applyDark(d);api('settings',{dark_a:d})};
   document.addEventListener('keydown',e=>{if(CUR!=='A')return;const rd=$('#A-reader').classList.contains('on');
     if(e.key==='Escape'&&rd)close();
     if(!rd&&!/INPUT|TEXTAREA/.test(document.activeElement.tagName)){
-      if(e.key==='/'){e.preventDefault();$('#A-q').focus()}
+      if(e.key==='/'){e.preventDefault();$('#A-q').focus()}}
+    if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'&&!rd){e.preventDefault();$('#A-q').focus();$('#A-q').select()}
+    if(!rd&&!/INPUT|TEXTAREA/.test(document.activeElement.tagName)){
       if(e.key==='Enter'&&sel)open();
       if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const i=P.all.findIndex(a=>a.uid===sel),n=P.all[i+(e.key==='ArrowDown'?1:-1)];if(n){select(n.uid);$(`#A-items .it.on`)?.scrollIntoView({block:'nearest'})}}}});
   onOV(side);
@@ -911,7 +934,7 @@ function debounce(f,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(
     RP=Pager($('#C-res'),(o,l)=>api('articles',{q,offset:o,limit:l}),items=>{reg(items);return items.map(fi).join('')});RP.onTotal=t=>$('#C-rc').textContent='· '+fmtN(t);RP.emptyMsg='No paper matches.';RP.reset()}
   $('#C-home').addEventListener('click',async e=>{const r=e.target.closest('[data-r]');if(r){const x=await api('toggle_read',{uid:r.dataset.r});const a=META[r.dataset.r];if(a)a.to_read=x.to_read;r.classList.toggle('on',x.to_read);r.textContent=x.to_read?'✓':'+';refreshOV();return}
     const u=e.target.closest('[data-u]');if(u)open(META[u.dataset.u])});
-  $('#C-q').oninput=debounce(()=>{q=$('#C-q').value.trim();if(cur)home();else if(q)results();else home()},300);
+  $('#C-q').oninput=debounce(()=>{q=$('#C-q').value.trim();if(cur)home();else if(q)results();else home()},150);
   $('#C-q').onkeydown=e=>{if(e.key==='Escape'){$('#C-q').value='';q='';home()}};
   function crumb(){$('#C-crumb').innerHTML=`<a id="C-back">Desk</a> › <b>${ESC(cur.title)}</b>`;$('#C-back').onclick=home}
   function open(a){if(!a)return;cur=a;$('#C-home').style.display='none';$('#C-rd').classList.add('on');crumb();rpan();R.open(docFor(a))}
@@ -927,6 +950,7 @@ function debounce(f,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(
       if(!a.file){$('#C-tr').onclick=async()=>{const r=await api('toggle_read',{uid:a.uid});a.to_read=r.to_read;rpan();refreshOV()};$('#C-web').onclick=()=>api('open_url',{url:a.link});
         $('#C-bib').onclick=async()=>{const r=await api('bibtex',{uid:a.uid});await copyText(r.bibtex);$('#C-bib').textContent='✓ Copied'}}}
     $$('#C-rt button').forEach(b=>b.onclick=()=>{rt=b.dataset.t;rpan()})}
+  document.addEventListener('keydown',e=>{if(CUR==='C'&&(e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('#C-q').focus();$('#C-q').select()}});
   $('#C-logo').onclick=()=>{$('#C-q').value='';q='';home()};
   onOV(()=>{const s=$('#C-sync');if(s)s.textContent=syncLabel()});
   ENTER.C=()=>{if(!started){started=true;R.setTheme(rTheme('C')||'day',true)}if(!cur)home()};

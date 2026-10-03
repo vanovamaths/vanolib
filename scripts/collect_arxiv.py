@@ -270,9 +270,17 @@ def main():
     )
 
 
+
+def build_search_index():
+    """Rebuild the instant-search index used by the website (scripts/build_index.py)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import build_index
+    build_index.main()
+
 if __name__ == "__main__":
     try:
         main()
+        build_search_index()
     except Exception as exc:
         print("ERREUR FATALE: %s" % exc, file=sys.stderr)
         sys.exit(1)
