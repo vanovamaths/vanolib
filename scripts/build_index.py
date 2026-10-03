@@ -94,20 +94,18 @@ def main():
                     if k not in papers or str(r[0]) > str(papers[k][0]):
                         papers[k] = list(r[:5])
 
-    # 2) keep existing doc numbers, append new papers (oldest first)
+    # 2) doc numbers follow publication date (oldest = 0). Daily syncs only add the newest
+    #    papers, so they land at the end and earlier chunks stay unchanged.
     meta = load(os.path.join(IDX, "meta.json"), {})
-    order = []
-    for c in range((meta.get("n", 0) + CHUNK - 1) // CHUNK):
-        order += [base_id(r[0]) for r in load(os.path.join(DOCS, f"{c}.json"), [])]
-    known = set(order)
-    if len(known) != len(order):          # corrupted → rebuild numbering from scratch
-        order, known = [], set()
-    order = [k for k in order if k in papers]   # drop papers that disappeared
-    if len(order) != len(known):
-        order, known = [], set()
-    new = sorted((k for k in papers if k not in known), key=lambda k: (str(papers[k][4]), k))
-    order += new
-    rows = [papers[k] for k in order]
+    rows = sorted(papers.values(), key=lambda r: (str(r[4] or ""), base_id(r[0])))
+    new = [None] * max(0, len(rows) - meta.get("n", 0))
+    years = {}
+    for i, r in enumerate(rows):
+        y = str(r[4] or "")[:4] or "0000"
+        if y in years:
+            years[y][1] = i + 1
+        else:
+            years[y] = [i, i + 1]
 
     # 3) doc chunks
     changed = 0
@@ -132,7 +130,7 @@ def main():
             os.remove(os.path.join(IDX, fn))
     changed += write_if_changed(os.path.join(IDX, "_cats.json"), {c: encode(v) for c, v in cats.items()})
     write_if_changed(os.path.join(IDX, "meta.json"), {
-        "n": len(rows), "chunk": CHUNK, "keys": keys,
+        "n": len(rows), "chunk": CHUNK, "keys": keys, "years": years,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")})
     print(f"Search index: {len(rows)} papers ({len(new)} new), {len(post)} words, {len(keys)} shards, {changed} files updated")
 

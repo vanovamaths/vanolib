@@ -294,6 +294,11 @@ input,textarea{font:inherit;border:0;outline:0;background:none;color:inherit}
 ::-webkit-scrollbar-track{background:transparent}
 
 /* ── web additions ── */
+.ysel{appearance:none;-webkit-appearance:none;border-radius:8px;padding:6px 26px 6px 10px;font-size:12px;cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 13px) 50%,calc(100% - 9px) 50%;background-size:4px 4px;background-repeat:no-repeat}
+#A .ysel{width:100%;margin:2px 0 4px;background-color:var(--card);border:1px solid var(--bd);color:var(--tx)}
+#B .ysel{margin-top:10px;width:100%;background-color:var(--p2);border:1px solid var(--bd);color:var(--tx)}
+#B .ysel option,#A .ysel option{background:#fff;color:#111}
+#C .ysel{margin-left:auto;background-color:var(--card);border:1px solid var(--bd);color:var(--tx);font-weight:400}
 .rnative{position:absolute;inset:0;display:flex;flex-direction:column;z-index:4;background:var(--rv)}
 .rnative iframe{flex:1;border:0;width:100%;background:#fff}
 .rnote{padding:8px 16px;font-size:12px;color:var(--rmu);background:var(--rside);border-bottom:1px solid var(--rbd)}
@@ -350,6 +355,8 @@ body.reading-A #switch{display:none}
       <div class="sec">arXiv categories</div>
       <div id="A-cats"></div>
       <div class="more" id="A-more">Show all categories</div>
+      <div class="sec">Year</div>
+      <select class="ysel" id="A-year" aria-label="Filter by year"></select>
       <div class="side-foot"><span id="A-sync"></span><br><button id="A-syncb">↻ Sync arXiv now</button></div>
     </aside>
     <div class="list">
@@ -382,6 +389,7 @@ body.reading-A #switch{display:none}
       <div class="lh">
         <button class="cmd" id="B-cmd">⌕ Search or run a command… <kbd>⌘ K</kbd></button>
         <div class="seg" id="B-seg"><button class="on" data-f="all">All</button><button data-f="read">To Read</button><button data-f="cont">In Progress</button><button data-f="pdf">PDFs</button></div>
+        <select class="ysel" id="B-year" aria-label="Filter by year"></select>
         <div class="qchip" id="B-qchip" style="display:none"></div>
       </div>
       <div class="stats"><span><b id="B-tot"></b>papers</span><span><b id="B-pdf"></b>PDFs</span><span style="margin-left:auto" id="B-sync"></span></div>
@@ -726,28 +734,30 @@ function loadAll(){if(DB.all)return Promise.resolve(DB.all);if(DB.allP)return DB
 const inProgress=()=>Object.entries(ST.get('state',{})).filter(([k,s])=>s.ratio>0&&s.ratio<.97&&!k.startsWith('file:'));
 const WEB={
   async overview(){await boot();const tr=ST.get('toread',{});const C={};(DB.man.categories||[]).forEach(c=>C[c.code]=c.count);
-    return{total:(IX.meta&&IX.meta.n)||DB.man.total||0,to_read:Object.keys(tr).length,pdfs:0,in_progress:inProgress().length,categories:C,last_sync:DB.man.generated||null,settings:WEB.settings(),sync:{}}},
-  async articles({filter='all',cat='',q='',sort='new',offset=0,limit=60}){await boot();const qq=(q||'').trim();const key=[filter,cat,qq.toLowerCase(),sort].join('|');
+    return{years:Object.entries((IX.meta&&IX.meta.years)||{}).filter(([y])=>y>='1989').map(([y,r])=>[y,r[1]-r[0]]).sort((a,b)=>b[0].localeCompare(a[0])),total:(IX.meta&&IX.meta.n)||DB.man.total||0,to_read:Object.keys(tr).length,pdfs:0,in_progress:inProgress().length,categories:C,last_sync:DB.man.generated||null,settings:WEB.settings(),sync:{}}},
+  async articles({filter='all',cat='',q='',sort='new',offset=0,limit=60,year=''}){await boot();const qq=(q||'').trim();const key=[filter,cat,qq.toLowerCase(),sort,year].join('|');
     if(filter==='read'||filter==='cont'||filter==='pdf'||!IX.meta){let L;
       if(DB.memo.key===key)L=DB.memo.list;else{
         if(filter==='read'){const tr=ST.get('toread',{});L=Object.values(tr).sort((a,b)=>(b.added||0)-(a.added||0)).map(x=>DB.index.get(baseId(x.row[0]))||x.row)}
         else if(filter==='cont')L=inProgress().sort((a,b)=>(b[1].updated||0)-(a[1].updated||0)).map(([k,s])=>DB.index.get(baseId(k))||s.row).filter(Boolean);
         else if(filter==='pdf')L=[];else L=await DB.latestP;
-        if(cat)L=L.filter(r=>r[3]===cat);const ts=normQ(qq);
+        if(cat)L=L.filter(r=>r[3]===cat);if(year)L=L.filter(r=>String(r[4]).startsWith(year));const ts=normQ(qq);
         if(ts.length)L=L.filter(r=>{const w=normQ(r[0]+' '+r[1]+' '+r[2]+' '+r[3]);return ts.every(t=>w.some(x=>x.startsWith(t)))});
         DB.memo={key,list:L}}
       return{items:L.slice(offset,offset+limit).map(toArt),total:offset===0?L.length:null,offset}}
+    const n=IX.meta.n,R=year&&IX.meta.years&&IX.meta.years[year],lo=R?R[0]:0,hi=R?R[1]:n;
     let ids;if(DB.memo.key===key)ids=DB.memo.list;else{
       ids=(qq||cat)?await ixSearch(qq,cat):null;
+      if(ids&&R)ids=ids.filter(i=>i>=lo&&i<hi);
       if(ids&&sort==='old')ids=ids.slice().reverse();
       if(ids&&sort==='az'&&ids.length<=4000){const rows=await ixRows(ids);ids=ids.map((id,j)=>[id,String((rows[j]||[])[1]||'')]).sort((a,b)=>a[1].localeCompare(b[1],'en',{sensitivity:'base'})).map(p=>p[0])}
       DB.memo={key,list:ids}}
-    const n=IX.meta.n;let page=[];
+    let page=[];
     if(ids)page=ids.slice(offset,offset+limit);
-    else if(sort==='old')for(let i=offset;i<Math.min(n,offset+limit);i++)page.push(i);
-    else for(let i=n-1-offset;i>=Math.max(0,n-offset-limit);i--)page.push(i);
+    else if(sort==='old')for(let i=lo+offset;i<Math.min(hi,lo+offset+limit);i++)page.push(i);
+    else for(let i=hi-1-offset;i>=Math.max(lo,hi-offset-limit);i--)page.push(i);
     const rows=await ixRows(page);addRows(rows);
-    return{items:rows.map(toArt),total:offset===0?(ids?ids.length:n):null,offset}},
+    return{items:rows.map(toArt),total:offset===0?(ids?ids.length:hi-lo):null,offset}},
   async article({uid}){await boot();const r=DB.index.get(baseId(uid))||(ST.get('toread',{})[uid]||{}).row||((ST.get('state',{})[uid])||{}).row;return r?toArt(r):null},
   async desk(){await boot();await DB.latestP;const S=ST.get('state',{}),tr=ST.get('toread',{});
     const cont=inProgress().sort((a,b)=>(b[1].updated||0)-(a[1].updated||0)).slice(0,8).map(([k,s])=>toArt(DB.index.get(baseId(k))||s.row)).filter(a=>a.title);
@@ -810,6 +820,8 @@ function Pager(el,load,render,limit=60){let off=0,done=false,busy=false,gen=0;co
   P.reset=()=>{gen++;off=0;done=false;busy=false;P.all=[];el.scrollTop=0;el.innerHTML='<div class="loadmore">Loading…</div>';more()};
   return P}
 
+/* year filter */
+const yearOpts=cur=>'<option value="">All years</option>'+(OV.years||[]).map(([y,c])=>`<option value="${y}" ${y===cur?'selected':''}>${y} · ${fmtN(c)}</option>`).join('');
 /* concept switching */
 let CUR=null;const ENTER={};
 function show(c){CUR=c;$$('#switch button').forEach(x=>x.classList.toggle('on',x.dataset.c===c));$$('.concept').forEach(s=>s.classList.toggle('on',s.id===c));ENTER[c]&&ENTER[c]();api('settings',{concept:c})}
@@ -819,7 +831,8 @@ function debounce(f,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(
 /* ════ A · Paper ════ */
 (()=>{let f='all',cat='',sort='new',sel=null,allCats=false,started=false;
   const R=new Reader($('#A-rh'),{...HOOKS,back:'← Library',autohide:true,theme:'day',onBack:close,onTheme:t=>saveTheme('A',t)});
-  const P=Pager($('#A-items'),(o,l)=>api('articles',{filter:f,cat,q:$('#A-q').value,sort,offset:o,limit:l}),items=>items.map(item).join(''));
+  let year='';
+  const P=Pager($('#A-items'),(o,l)=>api('articles',{filter:f,cat,q:$('#A-q').value,sort,year,offset:o,limit:l}),items=>items.map(item).join(''));
   P.onTotal=t=>$('#A-count').textContent=fmtN(t)+' paper'+(t===1?'':'s');
   P.after=()=>{if(!sel&&P.all[0])select(P.all[0].uid)};
   function item(a){return `<div class="it ${a.uid===sel?'on':''}" data-u="${ESC(a.uid)}">${a.to_read?'<span class="star">★</span>':''}<div class="t">${ESC(a.title)}</div><div class="m"><span class="dot" style="background:${catColor(a.category)}"></span>${ESC(short(a.authors))} · ${a.year} · ${ESC(a.category)}${a.has_pdf?' · ⇣':''}</div>${a.progress?`<div class="prog"><i style="width:${a.progress}%"></i></div>`:''}</div>`}
@@ -847,7 +860,7 @@ function debounce(f,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(
   function side(){$('#A-nall').textContent=fmtN(OV.total);$('#A-nread').textContent=OV.to_read;$('#A-ncont').textContent=OV.in_progress;$('#A-npdf').textContent=OV.pdfs;
     const C=OV.categories||{},pin=(OV.settings.pinned||[]).filter(c=>c in C),list=allCats?Object.keys(C):pin;
     $('#A-cats').innerHTML=list.map(k=>`<div class="nav ${cat===k?'on':''}" data-c="${k}"><span class="dot" style="background:${catColor(k)}"></span>${k}<span class="n">${fmtN(C[k])}</span></div>`).join('');
-    $('#A-more').textContent=allCats?'Show fewer':'Show all categories';$('#A-sync').textContent=syncLabel();
+    $('#A-more').textContent=allCats?'Show fewer':'Show all categories';$('#A-year').innerHTML=yearOpts(year);$('#A-sync').textContent=syncLabel();
     $('#A-syncb').disabled=!!(OV.sync&&OV.sync.running)}
   $('#A-more').onclick=()=>{allCats=!allCats;side()};
   $('#A aside').addEventListener('click',e=>{const n=e.target.closest('.nav');if(!n)return;
@@ -855,6 +868,7 @@ function debounce(f,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(
     else if(n.dataset.f){f=n.dataset.f;cat='';$('#A-title').textContent=n.dataset.l}
     $$('#A aside .nav').forEach(x=>x.classList.toggle('on',(x.dataset.f&&x.dataset.f===f&&!cat)||(x.dataset.c&&x.dataset.c===cat)));sel=null;P.reset()});
   $('#A-q').oninput=debounce(()=>{sel=null;P.reset()},120);
+  $('#A-year').onchange=e=>{year=e.target.value;sel=null;P.reset()};
   $('#A-syncb').onclick=syncNow;
   const applyDark=d=>{$('#A').classList.toggle('dark',d);$('#A-tgl').textContent=d?'☀':'☾'};
   $('#A-tgl').onclick=()=>{const d=!$('#A').classList.contains('dark');applyDark(d);api('settings',{dark_a:d})};
@@ -871,10 +885,10 @@ function debounce(f,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(
 })();
 
 /* ════ B · Nocturne ════ */
-(()=>{let f='all',q='',tabs=[],act=null,pi=0,started=false;const DOCS={},META={};
+(()=>{let f='all',q='',byear='',tabs=[],act=null,pi=0,started=false;const DOCS={},META={};
   const R=new Reader($('#B-rh'),{...HOOKS,theme:'night',onTheme:t=>saveTheme('B',t),onFile:doc=>{DOCS[doc.key]=doc;openTab(doc.key)}});
   let lastG='';
-  const P=Pager($('#B-items'),(o,l)=>api('articles',{filter:f,q,offset:o,limit:l}),(items,all)=>{if(!all.length)lastG='';let h='';items.forEach(a=>{META[a.uid]=a;const g=f==='all'&&!q?bucket(a.published):'';if(g&&g!==lastG){lastG=g;h+=`<div class="grp">${g}</div>`}
+  const P=Pager($('#B-items'),(o,l)=>api('articles',{filter:f,q,year:byear,offset:o,limit:l}),(items,all)=>{if(!all.length)lastG='';let h='';items.forEach(a=>{META[a.uid]=a;const g=f==='all'&&!q&&!byear?bucket(a.published):'';if(g&&g!==lastG){lastG=g;h+=`<div class="grp">${g}</div>`}
     h+=`<div class="it ${a.uid===act?'on':''}" data-u="${ESC(a.uid)}"><span class="src" style="background:${catColor(a.category)};box-shadow:0 0 8px ${catColor(a.category)}"></span><div style="min-width:0"><div class="t">${ESC(a.title)}</div><div class="m">${ESC(short(a.authors))}<span class="cat">${ESC(a.category)}</span>${a.to_read?'<span style="color:var(--ac)">★</span>':''}${a.has_pdf?'<span>⇣</span>':''}</div>${a.progress?`<div class="pb"><i style="width:${a.progress}%"></i></div>`:''}</div></div>`});return h});
   $('#B-items').addEventListener('click',e=>{const it=e.target.closest('.it');if(it)open(META[it.dataset.u])});
   function open(a){if(!a)return;META[a.uid]=a;DOCS[a.uid]=DOCS[a.uid]||docFor(a);openTab(a.uid)}
@@ -897,18 +911,19 @@ function debounce(f,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(
   const openP=()=>{$('#B-pal').classList.add('on');$('#B-pq').value='';pal_items=[];drawPal();$('#B-pq').focus();setTimeout(()=>$('#B-pq').focus(),20)},closeP=()=>$('#B-pal').classList.remove('on');
   $('#B-cmd').onclick=openP;$('#B-pq').oninput=()=>{drawPal();palSearch($('#B-pq').value)};$('#B-pal').onclick=e=>{if(e.target.id==='B-pal')closeP()};
   $('#B-syncb').onclick=syncNow;
+  $('#B-year').onchange=e=>{byear=e.target.value;P.reset()};
   document.addEventListener('keydown',e=>{if(CUR!=='B')return;
     if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openP();return}
     if($('#B-pal').classList.contains('on')){const Rr=$$('#B-pres .r');if(e.key==='Escape')closeP();if(e.key==='ArrowDown'){pi=Math.min(Rr.length-1,pi+1);hl();e.preventDefault()}if(e.key==='ArrowUp'){pi=Math.max(0,pi-1);hl();e.preventDefault()}if(e.key==='Enter')pick(Rr[pi]);return}
     if(/INPUT|TEXTAREA/.test(document.activeElement.tagName)||e.metaKey||e.ctrlKey)return;const L=P.all,i=L.findIndex(a=>a.uid===act);
     if(e.key==='j'&&L[i+1])open(L[i+1]);if(e.key==='k'&&i>0)open(L[i-1])});
-  onOV(()=>{$('#B-nread').textContent=OV.to_read||'';$('#B-tot').textContent=fmtN(OV.total);$('#B-pdf').textContent=fmtN(OV.pdfs);$('#B-sync').textContent=syncLabel()});
+  onOV(()=>{$('#B-year').innerHTML=yearOpts(byear);$('#B-nread').textContent=OV.to_read||'';$('#B-tot').textContent=fmtN(OV.total);$('#B-pdf').textContent=fmtN(OV.pdfs);$('#B-sync').textContent=syncLabel()});
   ENTER.B=async()=>{if(started)return;started=true;R.setTheme(rTheme('B')||'night',true);P.reset();
     const r=await api('articles',{filter:'cont',limit:1});if(r.items&&r.items[0]&&!act)open(r.items[0])};
 })();
 
 /* ════ C · Studio ════ */
-(()=>{let cur=null,rt='notes',started=false,q='';const META={};
+(()=>{let cur=null,rt='notes',started=false,q='',cyear='';const META={};
   const R=new Reader($('#C-rh'),{...HOOKS,side:true,hlTab:false,theme:'day',onTheme:t=>saveTheme('C',t),onHL:()=>rpan(),
     onOpen:doc=>{if(doc.file){cur={uid:doc.key,title:doc.title,authors:'Local file',category:'—',published:'',file:true};crumb();rpan()}}});
   const ring=(p)=>`<svg class="ring" viewBox="0 0 52 52"><circle cx="26" cy="26" r="22" fill="none" stroke="#e3f1ed" stroke-width="5"/><circle cx="26" cy="26" r="22" fill="none" stroke="#1f7a68" stroke-width="5" stroke-linecap="round" stroke-dasharray="${138.2*p/100} 200" transform="rotate(-90 26 26)"/><text x="26" y="30" text-anchor="middle" font-size="12" font-weight="600" fill="#14181f" font-family="Inter">${p}%</text></svg>`;
@@ -930,8 +945,9 @@ function debounce(f,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(
     <h3 style="margin-top:6px">To Read queue <small>${OV.to_read}</small></h3>${D.queue.map(a=>`<div class="sh-it" data-u="${ESC(a.uid)}">${th()}<div class="t">${ESC(a.title)}</div></div>`).join('')||'<div class="empty-row">Add papers with +</div>'}</div></div></div>`;
     $('#C-syncb').onclick=syncNow}
   let RP=null;
-  function results(){$('#C-home').innerHTML=`<div class="results"><h3>Results for “${ESC(q)}” <small id="C-rc"></small></h3><div class="feed" id="C-res" style="max-height:calc(100vh - 150px);overflow:auto"></div></div>`;
-    RP=Pager($('#C-res'),(o,l)=>api('articles',{q,offset:o,limit:l}),items=>{reg(items);return items.map(fi).join('')});RP.onTotal=t=>$('#C-rc').textContent='· '+fmtN(t);RP.emptyMsg='No paper matches.';RP.reset()}
+  function results(){$('#C-home').innerHTML=`<div class="results"><h3>Results for “${ESC(q)}” <small id="C-rc"></small><select class="ysel" id="C-year" aria-label="Filter by year">${yearOpts(cyear)}</select></h3><div class="feed" id="C-res" style="max-height:calc(100vh - 150px);overflow:auto"></div></div>`;
+    $('#C-year').onchange=e=>{cyear=e.target.value;RP.reset()};
+    RP=Pager($('#C-res'),(o,l)=>api('articles',{q,year:cyear,offset:o,limit:l}),items=>{reg(items);return items.map(fi).join('')});RP.onTotal=t=>$('#C-rc').textContent='· '+fmtN(t);RP.emptyMsg='No paper matches.';RP.reset()}
   $('#C-home').addEventListener('click',async e=>{const r=e.target.closest('[data-r]');if(r){const x=await api('toggle_read',{uid:r.dataset.r});const a=META[r.dataset.r];if(a)a.to_read=x.to_read;r.classList.toggle('on',x.to_read);r.textContent=x.to_read?'✓':'+';refreshOV();return}
     const u=e.target.closest('[data-u]');if(u)open(META[u.dataset.u])});
   $('#C-q').oninput=debounce(()=>{q=$('#C-q').value.trim();if(cur)home();else if(q)results();else home()},150);
