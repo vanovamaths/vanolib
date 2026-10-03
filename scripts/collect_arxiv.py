@@ -34,7 +34,7 @@ NS = {"a": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/ato
 
 LOOKBACK_DAYS = int(os.environ.get("VANOLIB_LOOKBACK_DAYS", "14"))
 MAX_RESULTS_PER_CATEGORY = int(os.environ.get("VANOLIB_MAX_RESULTS", "500"))
-LATEST_LIMIT = int(os.environ.get("VANOLIB_LATEST_LIMIT", "1200"))
+LATEST_LIMIT = int(os.environ.get("VANOLIB_LATEST_LIMIT", "3000"))
 REQUEST_PAUSE = float(os.environ.get("VANOLIB_REQUEST_PAUSE", "3.1"))
 MAX_ATTEMPTS = int(os.environ.get("VANOLIB_MAX_ATTEMPTS", "3"))
 
@@ -106,7 +106,8 @@ def fetch_recent(cat, start_date, end_date, max_results=MAX_RESULTS_PER_CATEGORY
         primary = entry.find("arxiv:primary_category", NS)
         category = primary.get("term") if primary is not None else cat
         published = entry.findtext("a:published", default="", namespaces=NS)
-        out.append([ext_id, title, authors, category, published[:10]])
+        summary = re.sub(r"[ \t]+", " ", (entry.findtext("a:summary", default="", namespaces=NS) or "").strip())
+        out.append([ext_id, title, authors, category, published[:10], summary])
 
     return out
 
@@ -188,7 +189,12 @@ def main():
     added = 0
     updated = 0
 
+    # abstracts are only kept for the newest papers (latest.json), not in the yearly shards
+    abstracts = {base_id(r[0]): r[5] for r in load_json(os.path.join(SITE_DATA, "latest.json"), []) if len(r) > 5 and r[5]}
     for key, rec in dedup.items():
+        if len(rec) > 5 and rec[5]:
+            abstracts[key] = rec[5]
+        rec = rec[:5]
         ext_id, title, authors, category, pub = rec
         year = (pub or "")[:4] or "unknown"
         path = os.path.join(SITE_DATA, "%s.json" % year)
@@ -238,13 +244,14 @@ def main():
                 latest_candidates.append(rec)
 
     latest_candidates.sort(key=newest_key, reverse=True)
-    latest = latest_candidates[:LATEST_LIMIT]
+    latest = [rec[:5] + ([abstracts[base_id(rec[0])]] if base_id(rec[0]) in abstracts else [])
+              for rec in latest_candidates[:LATEST_LIMIT]]
     save_json(os.path.join(SITE_DATA, "latest.json"), latest)
 
     years.sort(key=lambda item: item["year"], reverse=True)
     latest_date = latest[0][4] if latest else None
     manifest = {
-        "schema": 2,
+        "schema": 3,
         "total": total,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "latest_date": latest_date,

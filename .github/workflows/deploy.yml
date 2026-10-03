@@ -2,15 +2,11 @@ name: Deploy site
 
 on:
   push:
-    branches:
-      - main
-
-  workflow_run:
-    workflows:
-      - "Weekly arXiv update"
-    types:
-      - completed
-
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/deploy.yml"
+  workflow_call: {}
   workflow_dispatch: {}
 
 permissions:
@@ -18,21 +14,15 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
 jobs:
   deploy:
-    if: >
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: Checkout latest main
         uses: actions/checkout@v4
@@ -45,7 +35,7 @@ jobs:
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "site"
+          path: site
 
       - name: Deploy to GitHub Pages
         id: deployment
