@@ -56,7 +56,6 @@ function baseId(id){return String(id||"").replace(/v\d+$/,"")}
 function safeArxivId(id){return encodeURI(String(id||"").replace(/[^A-Za-z0-9.\/\-]/g,""))}
 function absUrl(id){return "https://arxiv.org/abs/"+safeArxivId(id)}
 function pdfUrl(id){return "https://arxiv.org/pdf/"+safeArxivId(id)}
-function scholarUrl(r){return "https://scholar.google.com/scholar?q="+encodeURIComponent('"'+r.title+'"')}
 function toRecord(row){
   return {
     id:String(row[0]||""),title:String(row[1]||"Untitled"),authors:String(row[2]||""),
@@ -226,7 +225,6 @@ function renderDetail(){
         '<button class="btn pri" id="open-reader">'+(p?'Resume reading':'Read paper')+'</button>'+
         '<button class="btn" id="star-detail">'+(favorites.has(r.id)?"★ In To Read":"☆ To Read")+'</button>'+
         '<a class="btn" href="'+absUrl(r.id)+'" target="_blank" rel="noopener">↗ arXiv</a>'+
-        '<a class="btn" href="'+scholarUrl(r)+'" target="_blank" rel="noopener">Scholar ↗</a>'+
         '<button class="btn" id="copy-bib">⧉ BibTeX</button>'+
       '</div>'+
       '<div class="lbl">Abstract</div><div class="ab">'+abs+'</div>'+
@@ -259,7 +257,6 @@ function openReader(){
   $("reader").classList.add("on");
   $("pdf-frame").src=pdfUrl(r.id)+"#view=FitH";
   $("reader-arxiv").href=absUrl(r.id);
-  $("reader-scholar").href=scholarUrl(r);
   $("reader-star").textContent=favorites.has(r.id)?"★":"☆";
   $("reader-meta").innerHTML='<strong>'+esc(r.title)+'</strong>'+esc(shortAuthor(r.authors))+'<br>'+esc(r.cat)+' · '+esc(formatDate(r.pub));
   state.zoom=100;applyZoom();
